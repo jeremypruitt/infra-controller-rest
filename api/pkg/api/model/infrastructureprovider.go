@@ -98,6 +98,7 @@ func NewAPIInfrastructureProviderStats(mcstatsmap map[string]int, ipbstatsmap ma
 			Decommissioned: mcstatsmap[cdbm.MachineStatusDecommissioned],
 			Unknown:        mcstatsmap[cdbm.MachineStatusUnknown],
 			Error:          mcstatsmap[cdbm.MachineStatusError],
+			Missing:        mcstatsmap[cdbm.MachineStatusMissing],
 			Maintenance:    mcstatsmap[cdbm.MachineStatusMaintenance],
 		},
 		IPBlock: APIIPBlockStats{

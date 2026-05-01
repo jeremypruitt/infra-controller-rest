@@ -12333,6 +12333,7 @@ components:
           assigned: 12
           ready: 5
           error: 2
+          missing: 0
           decommissioned: 0
           unknown: 0
       properties:
@@ -12347,6 +12348,8 @@ components:
         ready:
           type: integer
         error:
+          type: integer
+        missing:
           type: integer
         decommissioned:
           type: integer
@@ -17423,6 +17426,7 @@ components:
         - Maintenance
         - InUse
         - Error
+        - Missing
         - Decommissioned
         - Unknown
     MachineSummary:
@@ -20982,6 +20986,8 @@ components:
         inUse:
           type: integer
         error:
+          type: integer
+        missing:
           type: integer
         maintenance:
           type: integer

@@ -699,10 +699,10 @@ func (mm *ManageMachine) UpdateMachinesInDB(ctx context.Context, siteIDStr strin
 				continue
 			}
 
-			// Machine not found in reported inventory, set status to error and mark as missing
+			// Machine not found in reported inventory, set status to missing
 			slogger := logger.With().Str("Machine ID", existingMachine.ID).Logger()
 
-			status := cdbm.MachineStatusError
+			status := cdbm.MachineStatusMissing
 			statusMessage := "Machine is missing on Site"
 
 			// Update machine status/create status detail if it doesn't have this error recorded already
@@ -1084,7 +1084,7 @@ func getNICoMachineStatus(controllerMachine *cwssaws.Machine, logger zerolog.Log
 				}
 			}
 		case controllerMachineStateMissing:
-			machineStatus = cdbm.MachineStatusError
+			machineStatus = cdbm.MachineStatusMissing
 			statusMessage = "Machine is missing on Site"
 		default:
 			logger.Warn().Str("Machine State", controllerMachine.State).Msg("Received unrecognized Machine state from Site Controller")

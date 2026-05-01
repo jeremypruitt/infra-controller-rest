@@ -52,6 +52,8 @@ const (
 	MachineStatusInUse = "InUse"
 	// MachineStatusError indicates that the Machine is in error state
 	MachineStatusError = "Error"
+	// MachineStatusMissing indicates that the Machine is missing on Site
+	MachineStatusMissing = "Missing"
 	// MachineStatusDecommissioned indicates that the Machine was decommissioned
 	MachineStatusDecommissioned = "Decommissioned"
 	// MachineStatusUnknown indicates that the Machine status cannot be determined
@@ -80,6 +82,7 @@ var (
 		MachineStatusMaintenance:    true,
 		MachineStatusInUse:          true,
 		MachineStatusError:          true,
+		MachineStatusMissing:        true,
 		MachineStatusDecommissioned: true,
 		MachineStatusUnknown:        true,
 	}
@@ -491,6 +494,7 @@ func (msd MachineSQLDAO) GetCountByStatus(ctx context.Context, tx *db.Tx, infras
 		MachineStatusInUse:          0,
 		MachineStatusDecommissioned: 0,
 		MachineStatusError:          0,
+		MachineStatusMissing:        0,
 		MachineStatusReset:          0,
 		MachineStatusMaintenance:    0,
 	}

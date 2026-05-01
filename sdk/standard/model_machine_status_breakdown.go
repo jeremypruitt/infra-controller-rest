@@ -41,6 +41,7 @@ type MachineStatusBreakdown struct {
 	Ready        *int32 `json:"ready,omitempty"`
 	InUse        *int32 `json:"inUse,omitempty"`
 	Error        *int32 `json:"error,omitempty"`
+	Missing      *int32 `json:"missing,omitempty"`
 	Maintenance  *int32 `json:"maintenance,omitempty"`
 	Unknown      *int32 `json:"unknown,omitempty"`
 }
@@ -222,6 +223,38 @@ func (o *MachineStatusBreakdown) SetError(v int32) {
 	o.Error = &v
 }
 
+// GetMissing returns the Missing field value if set, zero value otherwise.
+func (o *MachineStatusBreakdown) GetMissing() int32 {
+	if o == nil || IsNil(o.Missing) {
+		var ret int32
+		return ret
+	}
+	return *o.Missing
+}
+
+// GetMissingOk returns a tuple with the Missing field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *MachineStatusBreakdown) GetMissingOk() (*int32, bool) {
+	if o == nil || IsNil(o.Missing) {
+		return nil, false
+	}
+	return o.Missing, true
+}
+
+// HasMissing returns a boolean if a field has been set.
+func (o *MachineStatusBreakdown) HasMissing() bool {
+	if o != nil && !IsNil(o.Missing) {
+		return true
+	}
+
+	return false
+}
+
+// SetMissing gets a reference to the given int32 and assigns it to the Missing field.
+func (o *MachineStatusBreakdown) SetMissing(v int32) {
+	o.Missing = &v
+}
+
 // GetMaintenance returns the Maintenance field value if set, zero value otherwise.
 func (o *MachineStatusBreakdown) GetMaintenance() int32 {
 	if o == nil || IsNil(o.Maintenance) {
@@ -310,6 +343,9 @@ func (o MachineStatusBreakdown) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Error) {
 		toSerialize["error"] = o.Error
+	}
+	if !IsNil(o.Missing) {
+		toSerialize["missing"] = o.Missing
 	}
 	if !IsNil(o.Maintenance) {
 		toSerialize["maintenance"] = o.Maintenance

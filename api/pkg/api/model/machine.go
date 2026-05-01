@@ -587,6 +587,8 @@ type APIMachineStats struct {
 	InUse int `json:"inUse"`
 	// Error is the total number of error machine object in NICo Cloud
 	Error int `json:"error"`
+	// Missing is the total number of machines that are missing on Site
+	Missing int `json:"missing"`
 	// Decommissioned is the total number of error decommissioned object in NICo Cloud
 	Decommissioned int `json:"decommissioned"`
 	// Maintenance is the total number of machines in Maintenance

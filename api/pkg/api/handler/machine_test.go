@@ -844,7 +844,7 @@ func TestMachineHandler_GetAll(t *testing.T) {
 	m33 := testMachineBuildMachine(t, dbSession, ip4.ID, site3.ID, nil, nil, false, true, cdbm.MachineStatusError)
 	assert.NotNil(t, m33)
 	common.TestBuildStatusDetail(t, dbSession, m33.ID, cdbm.MachineStatusInitializing, cdb.GetStrPtr("Machine is being initialized"))
-	common.TestBuildStatusDetail(t, dbSession, m33.ID, cdbm.MachineStatusError, cdb.GetStrPtr("Machine is missing on Site"))
+	common.TestBuildStatusDetail(t, dbSession, m33.ID, cdbm.MachineStatusMissing, cdb.GetStrPtr("Machine is missing on Site"))
 
 	m34 := testMachineBuildMachine(t, dbSession, ip4.ID, site3.ID, nil, nil, false, false, cdbm.MachineStatusReady)
 	assert.NotNil(t, m34)
@@ -2634,7 +2634,7 @@ func TestMachineHandler_Delete(t *testing.T) {
 	require.NoError(t, err)
 
 	// Make m missing on site for more than 24 hours
-	sd = testMachineBuildStatusDetail(t, dbSession, m.ID, cdbm.MachineStatusError, cdb.GetStrPtr("Machine is missing on Site"))
+	sd = testMachineBuildStatusDetail(t, dbSession, m.ID, cdbm.MachineStatusMissing, cdb.GetStrPtr("Machine is missing on Site"))
 	_, err = dbSession.DB.Exec("UPDATE status_detail SET created = NOW() - INTERVAL '38 HOUR', updated = NOW() - INTERVAL '38 HOUR' WHERE id = ?", sd.ID.String())
 	require.NoError(t, err)
 
@@ -2644,7 +2644,7 @@ func TestMachineHandler_Delete(t *testing.T) {
 	// Make m2 missing on site for more than 24 hours
 	testMachineBuildStatusDetail(t, dbSession, m2.ID, cdbm.MachineStatusInUse, cdb.GetStrPtr("Machine is in use"))
 
-	sd = testMachineBuildStatusDetail(t, dbSession, m2.ID, cdbm.MachineStatusError, cdb.GetStrPtr("Machine is missing on Site"))
+	sd = testMachineBuildStatusDetail(t, dbSession, m2.ID, cdbm.MachineStatusMissing, cdb.GetStrPtr("Machine is missing on Site"))
 	_, err = dbSession.DB.Exec("UPDATE status_detail SET created = NOW() - INTERVAL '26 HOUR' WHERE id = ?", sd.ID.String())
 	require.NoError(t, err)
 
@@ -2654,7 +2654,7 @@ func TestMachineHandler_Delete(t *testing.T) {
 	// Make m3 missing on site for more than 24 hours
 	testMachineBuildStatusDetail(t, dbSession, m3.ID, cdbm.MachineStatusInitializing, cdb.GetStrPtr("Machine is initializing"))
 
-	sd = testMachineBuildStatusDetail(t, dbSession, m3.ID, cdbm.MachineStatusError, cdb.GetStrPtr("Machine is missing on Site"))
+	sd = testMachineBuildStatusDetail(t, dbSession, m3.ID, cdbm.MachineStatusMissing, cdb.GetStrPtr("Machine is missing on Site"))
 	_, err = dbSession.DB.Exec("UPDATE status_detail SET created = NOW() - INTERVAL '25 HOUR' WHERE id = ?", sd.ID.String())
 	require.NoError(t, err)
 
@@ -2662,7 +2662,7 @@ func TestMachineHandler_Delete(t *testing.T) {
 	m4 := testMachineBuildMachine(t, dbSession, ip.ID, site.ID, nil, nil, true, false, cdbm.MachineStatusError)
 
 	// Make m4 missing on site for less than 24 hours
-	sd = testMachineBuildStatusDetail(t, dbSession, m3.ID, cdbm.MachineStatusError, cdb.GetStrPtr("Machine is missing on Site"))
+	sd = testMachineBuildStatusDetail(t, dbSession, m3.ID, cdbm.MachineStatusMissing, cdb.GetStrPtr("Machine is missing on Site"))
 	_, err = dbSession.DB.Exec("UPDATE status_detail SET created = NOW() - INTERVAL '6 HOUR' WHERE id = ?", sd.ID.String())
 	require.NoError(t, err)
 

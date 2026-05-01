@@ -132,6 +132,8 @@ type APIMachineStatusBreakdown struct {
 	InUse int `json:"inUse"`
 	// Error is the number of machines in error state
 	Error int `json:"error"`
+	// Missing is the number of machines that are missing on Site
+	Missing int `json:"missing"`
 	// Maintenance is the number of machines in maintenance state
 	Maintenance int `json:"maintenance"`
 	// Unknown is the number of machines in unknown state
@@ -150,6 +152,8 @@ func (amsb *APIMachineStatusBreakdown) AddMachineStatusCounts(m cdbm.Machine) {
 		amsb.InUse++
 	case cdbm.MachineStatusError:
 		amsb.Error++
+	case cdbm.MachineStatusMissing:
+		amsb.Missing++
 	case cdbm.MachineStatusMaintenance:
 		amsb.Maintenance++
 	case cdbm.MachineStatusUnknown:

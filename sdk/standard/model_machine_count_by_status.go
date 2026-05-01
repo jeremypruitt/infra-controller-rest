@@ -42,6 +42,7 @@ type MachineCountByStatus struct {
 	Assigned       *int32 `json:"assigned,omitempty"`
 	Ready          *int32 `json:"ready,omitempty"`
 	Error          *int32 `json:"error,omitempty"`
+	Missing        *int32 `json:"missing,omitempty"`
 	Decommissioned *int32 `json:"decommissioned,omitempty"`
 	Unknown        *int32 `json:"unknown,omitempty"`
 }
@@ -255,6 +256,38 @@ func (o *MachineCountByStatus) SetError(v int32) {
 	o.Error = &v
 }
 
+// GetMissing returns the Missing field value if set, zero value otherwise.
+func (o *MachineCountByStatus) GetMissing() int32 {
+	if o == nil || IsNil(o.Missing) {
+		var ret int32
+		return ret
+	}
+	return *o.Missing
+}
+
+// GetMissingOk returns a tuple with the Missing field value if set, nil otherwise
+// and a boolean to check if the value has been set.
+func (o *MachineCountByStatus) GetMissingOk() (*int32, bool) {
+	if o == nil || IsNil(o.Missing) {
+		return nil, false
+	}
+	return o.Missing, true
+}
+
+// HasMissing returns a boolean if a field has been set.
+func (o *MachineCountByStatus) HasMissing() bool {
+	if o != nil && !IsNil(o.Missing) {
+		return true
+	}
+
+	return false
+}
+
+// SetMissing gets a reference to the given int32 and assigns it to the Missing field.
+func (o *MachineCountByStatus) SetMissing(v int32) {
+	o.Missing = &v
+}
+
 // GetDecommissioned returns the Decommissioned field value if set, zero value otherwise.
 func (o *MachineCountByStatus) GetDecommissioned() int32 {
 	if o == nil || IsNil(o.Decommissioned) {
@@ -346,6 +379,9 @@ func (o MachineCountByStatus) ToMap() (map[string]interface{}, error) {
 	}
 	if !IsNil(o.Error) {
 		toSerialize["error"] = o.Error
+	}
+	if !IsNil(o.Missing) {
+		toSerialize["missing"] = o.Missing
 	}
 	if !IsNil(o.Decommissioned) {
 		toSerialize["decommissioned"] = o.Decommissioned

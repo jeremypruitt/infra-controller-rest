@@ -43,6 +43,7 @@ const (
 	MACHINESTATUS_MAINTENANCE    MachineStatus = "Maintenance"
 	MACHINESTATUS_IN_USE         MachineStatus = "InUse"
 	MACHINESTATUS_ERROR          MachineStatus = "Error"
+	MACHINESTATUS_MISSING        MachineStatus = "Missing"
 	MACHINESTATUS_DECOMMISSIONED MachineStatus = "Decommissioned"
 	MACHINESTATUS_UNKNOWN        MachineStatus = "Unknown"
 )
@@ -55,6 +56,7 @@ var AllowedMachineStatusEnumValues = []MachineStatus{
 	"Maintenance",
 	"InUse",
 	"Error",
+	"Missing",
 	"Decommissioned",
 	"Unknown",
 }

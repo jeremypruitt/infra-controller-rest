@@ -307,10 +307,10 @@ func TestManageMachine_UpdateMachinesInDB(t *testing.T) {
 	_, err := setupMDAO.Update(context.Background(), nil, cdbm.MachineUpdateInput{MachineID: m2.ID, IsUsableByTenant: cdb.GetBoolPtr(true)})
 	assert.Nil(t, err)
 	testMachineBuildStatusDetail(t, dbSession, m2.ID, cdbm.MachineStatusInitializing, cdb.GetStrPtr("Machine is being initialized"))
-	m3 := testMachineBuildMachine(t, dbSession, ip2.ID, site.ID, nil, nil, false, nil, false, nil, cdb.GetStrPtr(cdbm.MachineStatusError))
-	testMachineBuildStatusDetail(t, dbSession, m3.ID, cdbm.MachineStatusError, cdb.GetStrPtr("Machine is missing on Site"))
-	m4 := testMachineBuildMachine(t, dbSession, ip2.ID, site.ID, nil, nil, false, nil, false, nil, cdb.GetStrPtr(cdbm.MachineStatusError))
-	testMachineBuildStatusDetail(t, dbSession, m4.ID, cdbm.MachineStatusError, cdb.GetStrPtr("Machine is missing on Site"))
+	m3 := testMachineBuildMachine(t, dbSession, ip2.ID, site.ID, nil, nil, false, nil, false, nil, cdb.GetStrPtr(cdbm.MachineStatusMissing))
+	testMachineBuildStatusDetail(t, dbSession, m3.ID, cdbm.MachineStatusMissing, cdb.GetStrPtr("Machine is missing on Site"))
+	m4 := testMachineBuildMachine(t, dbSession, ip2.ID, site.ID, nil, nil, false, nil, false, nil, cdb.GetStrPtr(cdbm.MachineStatusMissing))
+	testMachineBuildStatusDetail(t, dbSession, m4.ID, cdbm.MachineStatusMissing, cdb.GetStrPtr("Machine is missing on Site"))
 	m5 := testMachineBuildMachine(t, dbSession, ip2.ID, site.ID, nil, nil, true, cdb.GetStrPtr("Test maintenance message"), true, cdb.GetStrPtr("Test network error message"), nil)
 	m6 := testMachineBuildMachine(t, dbSession, ip2.ID, site.ID, nil, nil, false, nil, false, nil, cdb.GetStrPtr(cdbm.MachineStatusReady))
 	m7 := testMachineBuildMachine(t, dbSession, ip2.ID, site.ID, nil, nil, false, nil, false, nil, cdb.GetStrPtr(cdbm.MachineStatusInUse))
@@ -1209,14 +1209,14 @@ func TestManageMachine_UpdateMachinesInDB(t *testing.T) {
 			}
 
 			if tt.args.missingMachine != nil {
-				// Machine 2 should be in error state as Inventory did not report it
+				// Machine 2 should be in missing state as Inventory did not report it
 				um2, serr := mDAO.GetByID(tt.args.ctx, nil, tt.args.missingMachine.ID, nil, false)
 				assert.Nil(t, serr)
-				assert.Equal(t, um2.Status, cdbm.MachineStatusError)
+				assert.Equal(t, um2.Status, cdbm.MachineStatusMissing)
 				assert.Equal(t, um2.IsMissingOnSite, true)
 				assert.Equal(t, um2.IsUsableByTenant, false)
 
-				// Machine 3 should have only 1 status detail (Error)
+				// Machine 3 should have only 1 status detail (Missing)
 				_, m3sdCount, serr := sdDAO.GetAllByEntityID(tt.args.ctx, nil, m3.ID, nil, nil, nil)
 				assert.Nil(t, serr)
 				assert.Equal(t, 1, m3sdCount)
@@ -1336,10 +1336,10 @@ func TestManageMachine_UpdateMachinesInDB(t *testing.T) {
 						assert.Equal(t, cdbm.MachineStatusReady, machine.Status)
 					}
 
-					// Check that no Machine status is Error due to being missing
+					// Check that no Machine status is Missing
 					filterInput = cdbm.MachineFilterInput{
 						SiteID:   &tt.args.siteID,
-						Statuses: []string{cdbm.MachineStatusError},
+						Statuses: []string{cdbm.MachineStatusMissing},
 					}
 					_, missingCount, serr := mDAO.GetAll(tt.args.ctx, nil, filterInput, cdbp.PageInput{}, nil)
 					assert.Nil(t, serr)
@@ -1358,10 +1358,10 @@ func TestManageMachine_UpdateMachinesInDB(t *testing.T) {
 						assert.Equal(t, cdbm.MachineStatusReady, machine.Status)
 					}
 
-					// Check that no Machine status is Error due to being missing
+					// Check that no Machine status is Missing
 					filterInput = cdbm.MachineFilterInput{
 						SiteID:   &tt.args.siteID,
-						Statuses: []string{cdbm.MachineStatusError},
+						Statuses: []string{cdbm.MachineStatusMissing},
 					}
 					_, missingCount, serr := mDAO.GetAll(tt.args.ctx, nil, filterInput, cdbp.PageInput{}, nil)
 					assert.Nil(t, serr)
@@ -1478,7 +1478,7 @@ func TestGetForgeMachineStatus(t *testing.T) {
 					State: controllerMachineStateMissing,
 				},
 			},
-			wantStatus:             cdbm.MachineStatusError,
+			wantStatus:             cdbm.MachineStatusMissing,
 			wantMachineAllocatable: false,
 		},
 		{
