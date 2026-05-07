@@ -168,6 +168,7 @@ func TestBuildCommands_EmbeddedSpec(t *testing.T) {
 		"site", "instance", "machine", "vpc", "subnet", "allocation",
 		"operating-system", "ssh-key", "ssh-key-group", "ip-block",
 		"infrastructure-provider", "tenant", "metadata", "user",
+		"machine-identity",
 	}
 	for _, name := range expected {
 		if !cmdNames[name] {

@@ -25,6 +25,7 @@ import (
 	"github.com/NVIDIA/infra-controller-rest/api/internal/config"
 	apiHandler "github.com/NVIDIA/infra-controller-rest/api/pkg/api/handler"
 	cdb "github.com/NVIDIA/infra-controller-rest/db/pkg/db"
+	cwssaws "github.com/NVIDIA/infra-controller-rest/workflow-schema/schema/site-agent/workflows/v1"
 
 	sc "github.com/NVIDIA/infra-controller-rest/api/pkg/client/site"
 )
@@ -980,7 +981,63 @@ func NewAPIRoutes(dbSession *cdb.Session, tc tClient.Client, tnc tClient.Namespa
 			Method:  http.MethodGet,
 			Handler: apiHandler.NewValidateTrayHandler(dbSession, tc, scp, cfg),
 		},
+		// Machine Identity (SPIFFE JWT-SVID) authed endpoints.
+		{
+			Path:    apiPathPrefix + "/site/:siteID/identity/config",
+			Method:  http.MethodPut,
+			Handler: apiHandler.NewUpdateIdentityConfigHandler(dbSession, scp),
+		},
+		{
+			Path:    apiPathPrefix + "/site/:siteID/identity/config",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetIdentityConfigHandler(dbSession, scp),
+		},
+		{
+			Path:    apiPathPrefix + "/site/:siteID/identity/config",
+			Method:  http.MethodDelete,
+			Handler: apiHandler.NewDeleteIdentityConfigHandler(dbSession, scp),
+		},
+		{
+			Path:    apiPathPrefix + "/site/:siteID/identity/token-delegation",
+			Method:  http.MethodPut,
+			Handler: apiHandler.NewUpdateTokenDelegationHandler(dbSession, scp),
+		},
+		{
+			Path:    apiPathPrefix + "/site/:siteID/identity/token-delegation",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetTokenDelegationHandler(dbSession, scp),
+		},
+		{
+			Path:    apiPathPrefix + "/site/:siteID/identity/token-delegation",
+			Method:  http.MethodDelete,
+			Handler: apiHandler.NewDeleteTokenDelegationHandler(dbSession, scp),
+		},
 	}
 
 	return apiRoutes
+}
+
+// NewWellKnownRoutes returns the public machine-identity discovery routes.
+// Registered before the auth middleware in server.go.
+func NewWellKnownRoutes(dbSession *cdb.Session, scp *sc.ClientPool, cfg *config.Config) []Route {
+	apiName := cfg.GetAPIName()
+	apiPathPrefix := "/org/:orgName/" + apiName
+
+	return []Route{
+		{
+			Path:    apiPathPrefix + "/site/:siteID/.well-known/jwks.json",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetJWKSHandler(dbSession, scp, cwssaws.JwksKind_Oidc),
+		},
+		{
+			Path:    apiPathPrefix + "/site/:siteID/.well-known/openid-configuration",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetOpenIDConfigurationHandler(dbSession, scp),
+		},
+		{
+			Path:    apiPathPrefix + "/site/:siteID/.well-known/spiffe/jwks.json",
+			Method:  http.MethodGet,
+			Handler: apiHandler.NewGetJWKSHandler(dbSession, scp, cwssaws.JwksKind_Spiffe),
+		},
+	}
 }

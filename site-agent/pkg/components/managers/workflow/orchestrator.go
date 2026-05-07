@@ -292,6 +292,8 @@ func workflowOrchestrator() error {
 	ManagerAccess.API.NVLinkLogicalPartition.RegisterSubscriber()
 	ManagerAccess.API.NVLinkLogicalPartition.RegisterPublisher()
 
+	ManagerAccess.API.MachineIdentity.RegisterSubscriber()
+
 	// RLA Rack workflows (only registered if RLA is enabled)
 	if ManagerAccess.Conf.EB.RLA.Enabled {
 		if ManagerAccess.API.RLA != nil {

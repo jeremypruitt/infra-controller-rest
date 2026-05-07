@@ -247,6 +247,24 @@ tags:
   - name: Metadata
     description: |-
       Metadata describes various system level attributes of the API service.
+  - name: Machine Identity
+    description: |-
+      Per-tenant SPIFFE JWT-SVID machine identity configuration and RFC 8693 token delegation.
+
+      These endpoints let Tenant Admins enable machine identity for their org on
+      a specific site, rotate the signing key, configure a token exchange callback,
+      and expose the public JWKS / OIDC discovery documents that JWT verifiers
+      (OpenBao, tenant APIs, etc.) consume.
+
+      All six management endpoints require the `FORGE_TENANT_ADMIN` role in the
+      URL `{org}` (the tenant whose identity configuration is being managed).
+      The three `.well-known/*` endpoints are public (no authentication required)
+      so external verifiers can fetch public keys without credentials. For the two
+      JWKS URLs, when identity material cannot be served for this org/site pair
+      (unknown site, org is not a tenant, no tenant allocation on the site, or no
+      identity configuration), the response is `200` with a constant-shape empty
+      keyset `{"keys":[]}` so HTTP status and payload shape do not reveal whether
+      keys exist. The OIDC discovery route returns `404` when metadata cannot be served.
   - name: Deprecations
     description: |-
       NICo REST API maintains backward compatibility with the previous versions. Any breaking changes are announced using deprecation notices.
@@ -12259,6 +12277,344 @@ paths:
         Retrieve a specific Audit Log Entry by ID
 
         User must have authorization role with `PROVIDER_ADMIN` or `TENANT_ADMIN` suffix
+  '/v2/org/{org}/carbide/site/{siteID}/identity/config':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: siteID
+        in: path
+        required: true
+        description: ID of the Site
+    put:
+      summary: Update Machine Identity Configuration
+      tags:
+        - Machine Identity
+      operationId: update-identity-config
+      description: |-
+        Create or update per-tenant machine identity (SPIFFE JWT-SVID) configuration.
+        The site controller generates a new ES256 signing keypair on the first call.
+
+        Returns `201 Created` on first call, `200 OK` on subsequent updates.
+        The URL `{org}` is authoritative; optional `orgId` in the body must match it when set.
+
+        User must have `FORGE_TENANT_ADMIN` authorization role in the URL `{org}`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IdentityConfigUpdateRequest'
+      responses:
+        '200':
+          description: Identity configuration replaced/updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityConfig'
+        '201':
+          description: Identity configuration created on first call
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityConfig'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
+    get:
+      summary: Get Machine Identity Configuration
+      tags:
+        - Machine Identity
+      operationId: get-identity-config
+      description: |-
+        Retrieve the current per-tenant machine identity configuration and active key ID.
+
+        User must have `FORGE_TENANT_ADMIN` authorization role in the URL `{org}`.
+      responses:
+        '200':
+          description: Identity configuration retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IdentityConfig'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
+    delete:
+      summary: Delete Machine Identity Configuration
+      tags:
+        - Machine Identity
+      operationId: delete-identity-config
+      description: |-
+        Remove per-tenant machine identity configuration and signing key. In-flight tokens
+        remain valid until their natural expiry (no revocation list).
+
+        User must have `FORGE_TENANT_ADMIN` authorization role in the URL `{org}`.
+      responses:
+        '204':
+          description: Identity configuration deleted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
+  '/v2/org/{org}/carbide/site/{siteID}/identity/token-delegation':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: siteID
+        in: path
+        required: true
+        description: ID of the Site
+    put:
+      summary: Update Token Delegation
+      tags:
+        - Machine Identity
+      operationId: update-token-delegation
+      description: |-
+        Register an RFC 8693 token exchange callback for the tenant. When configured, the
+        site controller issues a short-lived intermediate JWT-SVID to the tenant's
+        exchange server instead of signing workload tokens directly.
+
+        Returns `201 Created` on first call, `200 OK` on subsequent updates.
+        Requires a pre-existing identity configuration. The `clientSecret` is never
+        returned in responses; only its SHA-256 hash.
+
+        User must have `FORGE_TENANT_ADMIN` authorization role in the URL `{org}`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenDelegationUpdateRequest'
+      responses:
+        '200':
+          description: Token delegation replaced/updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenDelegation'
+        '201':
+          description: Token delegation created on first call
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenDelegation'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
+    get:
+      summary: Get Token Delegation
+      tags:
+        - Machine Identity
+      operationId: get-token-delegation
+      description: |-
+        Retrieve the registered token exchange callback for the tenant. The raw
+        `clientSecret` is never returned; only its SHA-256 hash.
+
+        User must have `FORGE_TENANT_ADMIN` authorization role in the URL `{org}`.
+      responses:
+        '200':
+          description: Token delegation retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenDelegation'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
+    delete:
+      summary: Delete Token Delegation
+      tags:
+        - Machine Identity
+      operationId: delete-token-delegation
+      description: |-
+        Remove the RFC 8693 token exchange callback. Subsequent IMDS requests for
+        the tenant revert to direct (non-delegated) signing by the site controller.
+
+        User must have `FORGE_TENANT_ADMIN` authorization role in the URL `{org}`.
+      responses:
+        '204':
+          description: Token delegation deleted
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
+  '/v2/org/{org}/carbide/site/{siteID}/.well-known/jwks.json':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: siteID
+        in: path
+        required: true
+        description: ID of the Site
+    get:
+      summary: Get JWKS (OIDC-style)
+      tags:
+        - Machine Identity
+      operationId: get-jwks
+      description: |-
+        Public RFC 7517 JSON Web Key Set for JWT-SVID signature verification (`use: sig`).
+        No authentication required.
+
+        Returns an empty keyset `{"keys":[]}` when no key material exists for this org/site,
+        and `502 Bad Gateway` if the site controller returns a malformed body.
+      security: []
+      responses:
+        '200':
+          description: |-
+            JWKS document, or empty `{"keys":[]}` when no keys are available for this org/site.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Verifiers should cache per this header; the key may rotate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKS'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '502':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
+  '/v2/org/{org}/carbide/site/{siteID}/.well-known/openid-configuration':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: siteID
+        in: path
+        required: true
+        description: ID of the Site
+    get:
+      summary: Get OpenID Configuration
+      tags:
+        - Machine Identity
+      operationId: get-openid-configuration
+      description: |-
+        Public OIDC discovery document pointing at the JWKS URIs. Carbide issues
+        bearer JWTs only; `id_token_signing_alg_values_supported` is always empty.
+        Returns `404` when no identity material exists for this org/site.
+      security: []
+      responses:
+        '200':
+          description: OpenID discovery document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OpenIDConfiguration'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
+  '/v2/org/{org}/carbide/site/{siteID}/.well-known/spiffe/jwks.json':
+    parameters:
+      - schema:
+          type: string
+        name: org
+        in: path
+        required: true
+        description: Name of the Org
+      - schema:
+          type: string
+          format: uuid
+        name: siteID
+        in: path
+        required: true
+        description: ID of the Site
+    get:
+      summary: Get SPIFFE JWKS
+      tags:
+        - Machine Identity
+      operationId: get-spiffe-jwks
+      description: |-
+        SPIFFE trust-domain JWKS — same key material as the OIDC JWKS but with
+        `use: jwt-svid` for SPIFFE-native verifiers. Empty-keyset and malformed-body
+        behavior matches the OIDC variant.
+      security: []
+      responses:
+        '200':
+          description: |-
+            SPIFFE JWKS document, or empty `{"keys":[]}` when no keys are available for this org/site.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JWKS'
+        '500':
+          $ref: '#/components/responses/GenericHttpError'
+        '502':
+          $ref: '#/components/responses/GenericHttpError'
+        '503':
+          $ref: '#/components/responses/GenericHttpError'
 components:
   schemas:
     InfrastructureProvider:
@@ -21075,6 +21431,229 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/InstanceTypeStats'
+    IdentityConfigUpdateRequest:
+      title: IdentityConfigUpdateRequest
+      description: |-
+        Per-tenant machine identity configuration payload. `issuer`,
+        `tokenTtlSec`, and `defaultAudience` are required; the request is
+        forwarded as-is to the site controller, which is the source of truth
+        for issuance policy.
+
+        The `org` identifier is determined by the URL path segment `{org}`,
+        not by the request body. Optional `orgId` in the body must match the
+        URL `{org}` when set; otherwise it is populated from the URL.
+      type: object
+      required:
+        - defaultAudience
+        - issuer
+        - tokenTtlSec
+      properties:
+        orgId:
+          type: string
+          description: |-
+            Optional. The URL path `{org}` is authoritative. When set, must equal the URL `{org}`;
+            the server overwrites with the URL value before forwarding to the site controller.
+        enabled:
+          type: boolean
+          default: true
+          description: Turn JWT-SVID issuance on/off for this org. Defaults to true when omitted.
+        issuer:
+          type: string
+          description: |-
+            JWT `iss` claim / OIDC issuer. Required. The site controller
+            (`Issuer::parse`) is authoritative for scheme and host rules and
+            accepts `https://`, `http://`, or `spiffe://` URLs with a DNS
+            host; malformed values are rejected with `400 Bad Request`.
+        defaultAudience:
+          type: string
+          description: Default audience applied when a workload does not specify one. Required.
+        allowedAudiences:
+          type: array
+          default: []
+          description: |-
+            Optional allowlist of audience strings. Defaults to an empty list, in
+            which case REST validation does not enforce an extra allowlist;
+            non-empty lists must include `defaultAudience`. The site controller
+            remains authoritative for issuance policy.
+          items:
+            type: string
+        tokenTtlSec:
+          type: integer
+          minimum: 1
+          description: |-
+            Issued-token TTL in seconds. Required and must be > 0. The
+            site controller enforces its configured
+            `[machine_identity].token_ttl_min_sec` /
+            `token_ttl_max_sec` window and rejects values outside the
+            window with `400 Bad Request`. The window is per-site, so
+            REST does not advertise a fixed maximum here.
+        subjectPrefix:
+          type: string
+          description: |-
+            Optional SPIFFE ID URI prefix for JWT `sub` (RFC-shaped
+            `spiffe://…`). When omitted, the site controller derives a prefix
+            from the issuer's trust domain.
+        rotateKey:
+          type: boolean
+          default: false
+          description: Force regeneration of the per-org signing keypair. Defaults to false.
+    IdentityConfig:
+      title: IdentityConfig
+      description: Current identity configuration and active key ID for the org.
+      type: object
+      properties:
+        orgId:
+          type: string
+        enabled:
+          type: boolean
+        issuer:
+          type: string
+        defaultAudience:
+          type: string
+        allowedAudiences:
+          type: array
+          items:
+            type: string
+        tokenTtlSec:
+          type: integer
+          minimum: 300
+          maximum: 86400
+        subjectPrefix:
+          type: string
+        keyId:
+          type: string
+          description: Identifier for the active signing key (matches JWKS `kid`).
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    ClientSecretBasicRequest:
+      title: ClientSecretBasicRequest
+      description: Raw OAuth2 `client_secret_basic` credentials. `clientSecret` is accepted on input but never returned in responses.
+      type: object
+      required:
+        - clientId
+        - clientSecret
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+          description: Raw secret; encrypted at rest on the site controller. Never returned.
+    ClientSecretBasicResponse:
+      title: ClientSecretBasicResponse
+      description: Public half of `client_secret_basic` credentials. Only the SHA-256 hash of the secret is returned.
+      type: object
+      properties:
+        clientId:
+          type: string
+        clientSecretHash:
+          type: string
+          description: SHA-256 hash of the raw secret.
+    TokenDelegationUpdateRequest:
+      title: TokenDelegationUpdateRequest
+      description: |-
+        RFC 8693 token exchange callback configuration. Omit `clientSecretBasic`
+        entirely for auth method `none`; include it for `client_secret_basic`.
+      type: object
+      required:
+        - tokenEndpoint
+        - subjectTokenAudience
+      properties:
+        tokenEndpoint:
+          type: string
+          format: uri
+          description: |-
+            URL of the tenant's RFC 8693 token exchange endpoint.
+            The site controller validates scheme and host against its
+            configured `[machine_identity].token_endpoint_domain_allowlist`
+            and rejects mismatches with `400 Bad Request`. Operators that
+            need to enforce HTTPS-only must populate that allowlist.
+        clientSecretBasic:
+          $ref: '#/components/schemas/ClientSecretBasicRequest'
+        subjectTokenAudience:
+          type: string
+          description: Audience value placed on the intermediate JWT-SVID posted to the exchange endpoint.
+    TokenDelegation:
+      title: TokenDelegation
+      description: Current token delegation configuration for the org.
+      type: object
+      properties:
+        orgId:
+          type: string
+        tokenEndpoint:
+          type: string
+          format: uri
+        clientSecretBasic:
+          $ref: '#/components/schemas/ClientSecretBasicResponse'
+        subjectTokenAudience:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    JWKS:
+      title: JWKS
+      description: RFC 7517 JSON Web Key Set. Pass-through from the site controller.
+      type: object
+      properties:
+        keys:
+          type: array
+          items:
+            type: object
+            properties:
+              kty:
+                type: string
+                example: EC
+              use:
+                type: string
+                description: "`sig` for OIDC JWKS, `jwt-svid` for SPIFFE JWKS"
+              crv:
+                type: string
+                example: P-256
+              kid:
+                type: string
+              x:
+                type: string
+                description: Base64url-encoded EC x coordinate
+              'y':
+                type: string
+                description: Base64url-encoded EC y coordinate
+              alg:
+                type: string
+                example: ES256
+    OpenIDConfiguration:
+      title: OpenIDConfiguration
+      description: |-
+        OIDC discovery document. Note: `id_token_signing_alg_values_supported`
+        is always empty because Carbide issues JWT bearer access tokens, not
+        OIDC `id_token`s.
+      type: object
+      properties:
+        issuer:
+          type: string
+        jwks_uri:
+          type: string
+          format: uri
+        response_types_supported:
+          type: array
+          items:
+            type: string
+        subject_types_supported:
+          type: array
+          items:
+            type: string
+        id_token_signing_alg_values_supported:
+          type: array
+          items:
+            type: string
+        spiffe_jwks_uri:
+          type: string
+          format: uri
   securitySchemes:
     JWTBearerToken:
       type: http

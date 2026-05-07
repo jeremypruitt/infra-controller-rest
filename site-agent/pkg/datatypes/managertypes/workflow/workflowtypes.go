@@ -79,6 +79,7 @@ type Workflow struct {
 	DpuExtensionServiceState    *MgrState
 	NVLinkLogicalPartitionState *MgrState
 	VpcPeeringState             *MgrState
+	MachineIdentityState        *MgrState
 }
 
 // Temporal datastructure
@@ -113,5 +114,6 @@ func NewWorkflowInstance() *Workflow {
 		DpuExtensionServiceState:    &MgrState{},
 		NVLinkLogicalPartitionState: &MgrState{},
 		VpcPeeringState:             &MgrState{},
+		MachineIdentityState:        &MgrState{},
 	}
 }

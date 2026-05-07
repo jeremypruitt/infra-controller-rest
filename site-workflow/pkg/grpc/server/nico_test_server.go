@@ -19,8 +19,18 @@ package server
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/gogo/status"
@@ -30,6 +40,7 @@ import (
 	"google.golang.org/grpc/reflection"
 
 	emptypb "google.golang.org/protobuf/types/known/emptypb"
+	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/rs/zerolog/log"
 
@@ -62,6 +73,26 @@ type NICoServerImpl struct {
 	eps map[string]*cwssaws.ExpectedPowerShelf
 	es  map[string]*cwssaws.ExpectedSwitch
 	er  map[string]*cwssaws.ExpectedRack
+	it  map[string]*cwssaws.InstanceType
+	des map[string]*cwssaws.DpuExtensionService
+	osi map[string]*cwssaws.OsImage
+	vpr map[string]*cwssaws.VpcPrefix
+	nsg map[string]*cwssaws.NetworkSecurityGroup
+	vpp map[string]*cwssaws.VpcPeering
+	nvl map[string]*cwssaws.NVLinkLogicalPartition
+	sku map[string]*cwssaws.Sku
+
+	// Per-org machine identity state.
+	identityConfigs  map[string]*cwssaws.IdentityConfigResponse
+	tokenDelegations map[string]*cwssaws.TokenDelegationResponse
+	identityKeys     map[string]*identityKeyMaterial
+}
+
+// identityKeyMaterial is a per-org ES256 keypair plus its derived kid.
+type identityKeyMaterial struct {
+	privateKey *ecdsa.PrivateKey
+	publicPEM  string
+	kid        string
 }
 
 var logger = log.With().Str("Component", "Mock NICo gRPC Server").Logger()
@@ -1288,6 +1319,422 @@ func (f *NICoServerImpl) LoadTestMachines() {
 	}
 }
 
+// ~~~~~ Machine Identity mock methods ~~~~~ //
+
+const (
+	jwtESAlg          = "ES256"
+	p256CoordinateLen = 32
+)
+
+// generateES256KeyMaterial returns a fresh P-256 keypair with derived kid.
+func generateES256KeyMaterial() (*identityKeyMaterial, error) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate P-256 key: %w", err)
+	}
+	spki, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("marshal SPKI: %w", err)
+	}
+	publicPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: spki}))
+	sum := sha256.Sum256([]byte(publicPEM))
+	return &identityKeyMaterial{
+		privateKey: priv,
+		publicPEM:  publicPEM,
+		kid:        hex.EncodeToString(sum[:]),
+	}, nil
+}
+
+// jwksDocumentForKey returns a one-key JWKS JSON document.
+func jwksDocumentForKey(km *identityKeyMaterial, use string) (string, error) {
+	if km == nil || km.privateKey == nil {
+		return "", fmt.Errorf("nil key material")
+	}
+	pub := km.privateKey.PublicKey
+	xb := pub.X.FillBytes(make([]byte, p256CoordinateLen))
+	yb := pub.Y.FillBytes(make([]byte, p256CoordinateLen))
+	jwk := map[string]string{
+		"kty": "EC",
+		"crv": "P-256",
+		"alg": jwtESAlg,
+		"use": use,
+		"kid": km.kid,
+		"x":   base64.RawURLEncoding.EncodeToString(xb),
+		"y":   base64.RawURLEncoding.EncodeToString(yb),
+	}
+	doc := map[string]any{"keys": []map[string]string{jwk}}
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+// signES256JWT returns a compact-serialized ES256 JWS.
+func signES256JWT(priv *ecdsa.PrivateKey, kid string, claims map[string]any) (string, error) {
+	header := map[string]string{"alg": jwtESAlg, "kid": kid, "typ": "JWT"}
+	hb, err := json.Marshal(header)
+	if err != nil {
+		return "", fmt.Errorf("marshal JWT header: %w", err)
+	}
+	cb, err := json.Marshal(claims)
+	if err != nil {
+		return "", fmt.Errorf("marshal JWT claims: %w", err)
+	}
+	signingInput := base64.RawURLEncoding.EncodeToString(hb) + "." +
+		base64.RawURLEncoding.EncodeToString(cb)
+	digest := sha256.Sum256([]byte(signingInput))
+	r, s, err := ecdsa.Sign(rand.Reader, priv, digest[:])
+	if err != nil {
+		return "", fmt.Errorf("ecdsa sign: %w", err)
+	}
+	sig := make([]byte, 2*p256CoordinateLen)
+	r.FillBytes(sig[:p256CoordinateLen])
+	s.FillBytes(sig[p256CoordinateLen:])
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig), nil
+}
+
+// clientSecretDisplayHash returns the truncated SHA-256 display form.
+func clientSecretDisplayHash(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	full := hex.EncodeToString(sum[:])
+	if len(full) >= 8 {
+		return "sha256:" + full[:8] + ".."
+	}
+	return "sha256:" + full
+}
+
+// normalizeAllowedAudiences defaults to [defaultAud] when empty; otherwise defaultAud must appear in allowed.
+func normalizeAllowedAudiences(defaultAud string, allowed []string) ([]string, error) {
+	if len(allowed) == 0 {
+		return []string{defaultAud}, nil
+	}
+	for _, a := range allowed {
+		if a == defaultAud {
+			out := make([]string, len(allowed))
+			copy(out, allowed)
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("default_audience %q must appear in allowed_audiences", defaultAud)
+}
+
+// SetIdentityConfiguration implements interface NICoServer.
+func (f *NICoServerImpl) SetIdentityConfiguration(ctx context.Context, req *cwssaws.IdentityConfigRequest) (*cwssaws.IdentityConfigResponse, error) {
+	if req == nil || req.GetOrganizationId() == "" || req.GetConfig() == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	in := req.GetConfig()
+	if strings.TrimSpace(in.GetDefaultAudience()) == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "default_audience is required")
+	}
+	allowed, err := normalizeAllowedAudiences(in.GetDefaultAudience(), in.GetAllowedAudiences())
+	if err != nil {
+		return nil, status.Errorf(codes.InvalidArgument, "%s", err.Error())
+	}
+
+	orgID := req.GetOrganizationId()
+	now := timestamppb.Now()
+
+	existing, isUpdate := f.identityConfigs[orgID]
+	resp := &cwssaws.IdentityConfigResponse{
+		OrganizationId: orgID,
+		Config: &cwssaws.IdentityConfig{
+			Enabled:          in.GetEnabled(),
+			Issuer:           in.GetIssuer(),
+			DefaultAudience:  in.GetDefaultAudience(),
+			AllowedAudiences: allowed,
+			TokenTtlSec:      in.GetTokenTtlSec(),
+			SubjectPrefix:    in.SubjectPrefix,
+			RotateKey:        false,
+		},
+		UpdatedAt: now,
+	}
+
+	if isUpdate && !in.GetRotateKey() {
+		// Update path: keep the existing key + created-at.
+		resp.KeyId = existing.GetKeyId()
+		resp.CreatedAt = existing.GetCreatedAt()
+	} else {
+		// First-create or rotate-key: generate a fresh ES256 keypair.
+		newKey, err := generateES256KeyMaterial()
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to generate signing key: %v", err)
+		}
+		f.identityKeys[orgID] = newKey
+		resp.KeyId = newKey.kid
+		if isUpdate {
+			resp.CreatedAt = existing.GetCreatedAt()
+		} else {
+			resp.CreatedAt = now
+		}
+	}
+	f.identityConfigs[orgID] = resp
+	return resp, nil
+}
+
+// GetIdentityConfiguration implements interface NICoServer.
+func (f *NICoServerImpl) GetIdentityConfiguration(ctx context.Context, req *cwssaws.GetIdentityConfigRequest) (*cwssaws.IdentityConfigResponse, error) {
+	if req == nil || req.GetOrganizationId() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	cfg, ok := f.identityConfigs[req.GetOrganizationId()]
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "Identity configuration not found for org %q", req.GetOrganizationId())
+	}
+	return cfg, nil
+}
+
+// DeleteIdentityConfiguration implements interface NICoServer.
+func (f *NICoServerImpl) DeleteIdentityConfiguration(ctx context.Context, req *cwssaws.GetIdentityConfigRequest) (*emptypb.Empty, error) {
+	if req == nil || req.GetOrganizationId() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	orgID := req.GetOrganizationId()
+	if _, ok := f.identityConfigs[orgID]; !ok {
+		return nil, status.Errorf(codes.NotFound, "Identity configuration not found for org %q", orgID)
+	}
+	delete(f.identityConfigs, orgID)
+	delete(f.tokenDelegations, orgID)
+	delete(f.identityKeys, orgID)
+	return &emptypb.Empty{}, nil
+}
+
+// SetTokenDelegation implements interface NICoServer.
+func (f *NICoServerImpl) SetTokenDelegation(ctx context.Context, req *cwssaws.TokenDelegationRequest) (*cwssaws.TokenDelegationResponse, error) {
+	if req == nil || req.GetOrganizationId() == "" || req.GetConfig() == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	orgID := req.GetOrganizationId()
+	in := req.GetConfig()
+	if strings.TrimSpace(in.GetTokenEndpoint()) == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "token_endpoint is required")
+	}
+	if strings.TrimSpace(in.GetSubjectTokenAudience()) == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "subject_token_audience is required")
+	}
+
+	if _, ok := f.identityConfigs[orgID]; !ok {
+		return nil, status.Errorf(codes.NotFound, "Identity configuration must exist before token delegation is set for org %q", orgID)
+	}
+
+	now := timestamppb.Now()
+	existing, isUpdate := f.tokenDelegations[orgID]
+
+	resp := &cwssaws.TokenDelegationResponse{
+		OrganizationId:       orgID,
+		TokenEndpoint:        in.GetTokenEndpoint(),
+		SubjectTokenAudience: in.GetSubjectTokenAudience(),
+		UpdatedAt:            now,
+	}
+	if basic := in.GetClientSecretBasic(); basic != nil {
+		if strings.TrimSpace(basic.GetClientId()) == "" {
+			return nil, status.Errorf(codes.InvalidArgument, "client_id is required for client_secret_basic")
+		}
+		resp.AuthMethodConfig = &cwssaws.TokenDelegationResponse_ClientSecretBasic{
+			ClientSecretBasic: &cwssaws.ClientSecretBasicResponse{
+				ClientId:         basic.GetClientId(),
+				ClientSecretHash: clientSecretDisplayHash(basic.GetClientSecret()),
+			},
+		}
+	}
+	if isUpdate {
+		resp.CreatedAt = existing.GetCreatedAt()
+	} else {
+		resp.CreatedAt = now
+	}
+
+	f.tokenDelegations[orgID] = resp
+	return resp, nil
+}
+
+// GetTokenDelegation implements interface NICoServer.
+func (f *NICoServerImpl) GetTokenDelegation(ctx context.Context, req *cwssaws.GetTokenDelegationRequest) (*cwssaws.TokenDelegationResponse, error) {
+	if req == nil || req.GetOrganizationId() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	td, ok := f.tokenDelegations[req.GetOrganizationId()]
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "Token delegation not found for org %q", req.GetOrganizationId())
+	}
+	return td, nil
+}
+
+// DeleteTokenDelegation implements interface NICoServer.
+func (f *NICoServerImpl) DeleteTokenDelegation(ctx context.Context, req *cwssaws.GetTokenDelegationRequest) (*emptypb.Empty, error) {
+	if req == nil || req.GetOrganizationId() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	orgID := req.GetOrganizationId()
+	if _, ok := f.tokenDelegations[orgID]; !ok {
+		return nil, status.Errorf(codes.NotFound, "Token delegation not found for org %q", orgID)
+	}
+	delete(f.tokenDelegations, orgID)
+	return &emptypb.Empty{}, nil
+}
+
+// GetJWKS implements interface NICoServer.
+func (f *NICoServerImpl) GetJWKS(ctx context.Context, req *cwssaws.JwksRequest) (*cwssaws.Jwks, error) {
+	if req == nil || req.GetOrganizationId() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	_, hasCfg := f.identityConfigs[req.GetOrganizationId()]
+	km, hasKey := f.identityKeys[req.GetOrganizationId()]
+	if !hasCfg {
+		return nil, status.Errorf(codes.NotFound, "Identity configuration not found for org %q", req.GetOrganizationId())
+	}
+	if !hasKey {
+		return nil, status.Errorf(codes.Internal, "Signing key missing for org %q (mock state inconsistent)", req.GetOrganizationId())
+	}
+	use := "sig"
+	if req.GetKind() == cwssaws.JwksKind_Spiffe {
+		use = "jwt-svid"
+	}
+	doc, err := jwksDocumentForKey(km, use)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to serialize JWKS: %v", err)
+	}
+	return &cwssaws.Jwks{Jwks: doc}, nil
+}
+
+// GetOpenIDConfiguration implements interface NICoServer.
+func (f *NICoServerImpl) GetOpenIDConfiguration(ctx context.Context, req *cwssaws.OpenIdConfigRequest) (*cwssaws.OpenIdConfiguration, error) {
+	if req == nil || req.GetOrganizationId() == "" {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	cfg, ok := f.identityConfigs[req.GetOrganizationId()]
+	if !ok {
+		return nil, status.Errorf(codes.NotFound, "Identity configuration not found for org %q", req.GetOrganizationId())
+	}
+	iss := cfg.GetConfig().GetIssuer()
+	if strings.TrimSpace(iss) == "" {
+		return nil, status.Errorf(codes.NotFound, "Issuer not configured for org %q", req.GetOrganizationId())
+	}
+	base := strings.TrimRight(iss, "/")
+	return &cwssaws.OpenIdConfiguration{
+		Issuer:                           iss,
+		JwksUri:                          base + "/.well-known/jwks.json",
+		ResponseTypesSupported:           []string{"token"},
+		SubjectTypesSupported:            []string{"public"},
+		IdTokenSigningAlgValuesSupported: []string{},
+		SpiffeJwksUri:                    base + "/.well-known/spiffe/jwks.json",
+	}, nil
+}
+
+// resolveSigningOrg returns the signing org when exactly one is configured,
+// otherwise the empty string. Tests that need multi-org behavior must
+// configure a single identity per mock instance.
+func (f *NICoServerImpl) resolveSigningOrg(_ context.Context) string {
+	if len(f.identityConfigs) == 1 {
+		for k := range f.identityConfigs {
+			return k
+		}
+	}
+	return ""
+}
+
+// SignMachineIdentity implements interface NICoServer.
+func (f *NICoServerImpl) SignMachineIdentity(ctx context.Context, req *cwssaws.MachineIdentityRequest) (*cwssaws.MachineIdentityResponse, error) {
+	if req == nil {
+		return nil, status.Errorf(codes.InvalidArgument, "Invalid request argument")
+	}
+	orgID := f.resolveSigningOrg(ctx)
+	if orgID == "" {
+		return nil, status.Errorf(codes.Unauthenticated, "Cannot resolve signing org; seed exactly one identity in the mock")
+	}
+	cfg, hasCfg := f.identityConfigs[orgID]
+	km, hasKey := f.identityKeys[orgID]
+	if !hasCfg {
+		return nil, status.Errorf(codes.NotFound, "Identity configuration not found for org %q", orgID)
+	}
+	if !hasKey {
+		return nil, status.Errorf(codes.Internal, "Signing key missing for org %q (mock state inconsistent)", orgID)
+	}
+
+	audiences := req.GetAudience()
+	if len(audiences) == 0 {
+		audiences = []string{cfg.GetConfig().GetDefaultAudience()}
+	} else {
+		allowed := make(map[string]struct{}, len(cfg.GetConfig().GetAllowedAudiences()))
+		for _, a := range cfg.GetConfig().GetAllowedAudiences() {
+			allowed[a] = struct{}{}
+		}
+		for _, a := range audiences {
+			if _, ok := allowed[a]; !ok {
+				return nil, status.Errorf(codes.InvalidArgument, "audience %q is not in allowed_audiences", a)
+			}
+		}
+	}
+
+	ttl := int64(cfg.GetConfig().GetTokenTtlSec())
+	if ttl <= 0 {
+		ttl = 600
+	}
+	now := time.Now().Unix()
+
+	subjectPrefix := cfg.GetConfig().GetSubjectPrefix()
+	if subjectPrefix == "" {
+		subjectPrefix = strings.TrimRight(cfg.GetConfig().GetIssuer(), "/") + "/machine"
+	}
+	sub := strings.TrimRight(subjectPrefix, "/") + "/" + uuid.NewString()
+
+	var aud any = audiences[0]
+	if len(audiences) > 1 {
+		aud = audiences
+	}
+	claims := map[string]any{
+		"iss": cfg.GetConfig().GetIssuer(),
+		"sub": sub,
+		"aud": aud,
+		"iat": now,
+		"nbf": now,
+		"exp": now + ttl,
+		"jti": uuid.NewString(),
+	}
+
+	token, err := signES256JWT(km.privateKey, km.kid, claims)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "failed to sign token: %v", err)
+	}
+	return &cwssaws.MachineIdentityResponse{
+		AccessToken:     token,
+		IssuedTokenType: "urn:ietf:params:oauth:token-type:jwt",
+		TokenType:       "Bearer",
+		ExpiresIn:       fmt.Sprintf("%d", ttl),
+	}, nil
+}
+
+// LoadTestIdentity seeds one example identity configuration.
+func (f *NICoServerImpl) LoadTestIdentity() {
+	const seedOrg = "test-org"
+	if f.identityKeys == nil {
+		f.identityKeys = make(map[string]*identityKeyMaterial)
+	}
+	if f.identityConfigs == nil {
+		f.identityConfigs = make(map[string]*cwssaws.IdentityConfigResponse)
+	}
+	km, err := generateES256KeyMaterial()
+	if err != nil {
+		logger.Fatal().Err(err).Msg("LoadTestIdentity: failed to generate ES256 keypair")
+		return
+	}
+	f.identityKeys[seedOrg] = km
+	now := timestamppb.Now()
+	f.identityConfigs[seedOrg] = &cwssaws.IdentityConfigResponse{
+		OrganizationId: seedOrg,
+		Config: &cwssaws.IdentityConfig{
+			Enabled:          true,
+			Issuer:           "https://carbide-rest.mock/v2/org/test-org/carbide/site/mock-site",
+			DefaultAudience:  "openbao",
+			AllowedAudiences: []string{"openbao", "vault"},
+			TokenTtlSec:      600,
+		},
+		KeyId:     km.kid,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+}
+
 // NICoTest tests the grpc server
 func NICoTest(secs int) {
 	listener, err := net.Listen("tcp", DefaultPort)
@@ -1299,18 +1746,22 @@ func NICoTest(secs int) {
 	reflection.Register(s)
 
 	nicoServer := &NICoServerImpl{
-		v:   make(map[string]*cwssaws.Vpc),
-		ns:  make(map[string]*cwssaws.NetworkSegment),
-		ins: make(map[string]*cwssaws.Instance),
-		m:   make(map[string]*cwssaws.Machine),
-		tk:  make(map[string]*cwssaws.TenantKeyset),
-		ibp: make(map[string]*cwssaws.IBPartition),
-		em:  make(map[string]*cwssaws.ExpectedMachine),
-		eps: make(map[string]*cwssaws.ExpectedPowerShelf),
-		es:  make(map[string]*cwssaws.ExpectedSwitch),
-		er:  make(map[string]*cwssaws.ExpectedRack),
+		v:                make(map[string]*cwssaws.Vpc),
+		ns:               make(map[string]*cwssaws.NetworkSegment),
+		ins:              make(map[string]*cwssaws.Instance),
+		m:                make(map[string]*cwssaws.Machine),
+		tk:               make(map[string]*cwssaws.TenantKeyset),
+		ibp:              make(map[string]*cwssaws.IBPartition),
+		em:               make(map[string]*cwssaws.ExpectedMachine),
+		eps:              make(map[string]*cwssaws.ExpectedPowerShelf),
+		es:               make(map[string]*cwssaws.ExpectedSwitch),
+		er:               make(map[string]*cwssaws.ExpectedRack),
+		identityConfigs:  make(map[string]*cwssaws.IdentityConfigResponse),
+		tokenDelegations: make(map[string]*cwssaws.TokenDelegationResponse),
+		identityKeys:     make(map[string]*identityKeyMaterial),
 	}
 	nicoServer.LoadTestMachines()
+	nicoServer.LoadTestIdentity()
 
 	cwssaws.RegisterNICoServer(s, nicoServer)
 

@@ -24,6 +24,7 @@ import (
 	"github.com/NVIDIA/infra-controller-rest/site-agent/pkg/components/managers/expectedpowershelf"
 	"github.com/NVIDIA/infra-controller-rest/site-agent/pkg/components/managers/expectedrack"
 	"github.com/NVIDIA/infra-controller-rest/site-agent/pkg/components/managers/expectedswitch"
+	"github.com/NVIDIA/infra-controller-rest/site-agent/pkg/components/managers/identity"
 	"github.com/NVIDIA/infra-controller-rest/site-agent/pkg/components/managers/infinibandpartition"
 	"github.com/NVIDIA/infra-controller-rest/site-agent/pkg/components/managers/instance"
 	"github.com/NVIDIA/infra-controller-rest/site-agent/pkg/components/managers/instancetype"
@@ -177,4 +178,9 @@ func (m *Manager) NVLinkLogicalPartition() *nvlinklogicalpartition.API {
 // RLA - Add RLA Manager instance here
 func (m *Manager) RLA() *rla.API {
 	return rla.NewRLAManager(m.Data.EB, m.API, m.Conf)
+}
+
+// MachineIdentity - Add MachineIdentity Manager instance here
+func (m *Manager) MachineIdentity() *identity.API {
+	return identity.NewMachineIdentityManager(m.Data.EB, m.API, m.Conf)
 }

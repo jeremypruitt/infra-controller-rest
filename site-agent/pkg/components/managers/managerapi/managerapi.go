@@ -65,6 +65,7 @@ type ManagerAPI struct {
 	DpuExtensionService    DpuExtensionServiceInterface
 	NVLinkLogicalPartition NVLinkLogicalPartitionInterface
 	RLA                    RLAInterface
+	MachineIdentity        MachineIdentityInterface
 }
 
 // ManagerConf - Conf struct

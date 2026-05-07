@@ -77,6 +77,16 @@ var argResourceMap = map[string]string{
 	"network-security-group get":    "network-security-group",
 	"network-security-group update": "network-security-group",
 	"network-security-group delete": "network-security-group",
+
+	"machine-identity config get":              "site",
+	"machine-identity config update":           "site",
+	"machine-identity config delete":           "site",
+	"machine-identity token-delegation get":    "site",
+	"machine-identity token-delegation update": "site",
+	"machine-identity token-delegation delete": "site",
+	"machine-identity well-known jwks":         "site",
+	"machine-identity well-known spiffe-jwks":  "site",
+	"machine-identity well-known openid":       "site",
 }
 
 var history []string
