@@ -26,6 +26,7 @@ import (
 
 	"github.com/NVIDIA/infra-controller-rest/api/pkg/api/model/util"
 	cdbm "github.com/NVIDIA/infra-controller-rest/db/pkg/db/model"
+	cwssaws "github.com/NVIDIA/infra-controller-rest/workflow-schema/schema/site-agent/workflows/v1"
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 	validationis "github.com/go-ozzo/ozzo-validation/v4/is"
 	"github.com/google/uuid"
@@ -170,6 +171,26 @@ func (ascr APIVpcCreateRequest) Validate() error {
 	return err
 }
 
+// ToProto builds the workflow request that asks a Site to create a new
+// VPC for this API request. `vpc` is the just-persisted DB record (used
+// for ID/Name/NSG/Labels/Description/NVLink so the wire reflects the
+// canonical entity state). `nwvt`, `vni`, and `routingProfile` are
+// validation-derived values produced by the handler.
+func (ascr APIVpcCreateRequest) ToProto(vpc *cdbm.Vpc, nwvt *cwssaws.VpcVirtualizationType, vni *uint32, routingProfile *string) *cwssaws.VpcCreationRequest {
+	vpcProto := vpc.ToProto()
+	return &cwssaws.VpcCreationRequest{
+		Id:                              vpcProto.Id,
+		Name:                            vpcProto.Name,
+		TenantOrganizationId:            vpcProto.TenantOrganizationId,
+		NetworkVirtualizationType:       nwvt,
+		RoutingProfileType:              routingProfile,
+		NetworkSecurityGroupId:          vpcProto.NetworkSecurityGroupId,
+		Vni:                             vni,
+		Metadata:                        vpcProto.Metadata,
+		DefaultNvlinkLogicalPartitionId: vpcProto.DefaultNvlinkLogicalPartitionId,
+	}
+}
+
 // APIVpcUpdateRequest captures the request data for updating a new VPC
 type APIVpcUpdateRequest struct {
 	// Name is the name of the VPC
@@ -206,6 +227,23 @@ func (asur APIVpcUpdateRequest) Validate() error {
 	}
 
 	return err
+}
+
+// ToProto builds the workflow request that pushes this Update's
+// merged-into-DB state to a Site. The persisted `vpc` is the source of
+// the wire fields because the handler has already merged the request's
+// (sparse) update fields into the entity by the time this is called;
+// sending the post-merge state matches the pre-existing handler
+// behaviour and keeps unchanged fields populated. The handler may
+// further set `DefaultNvlinkLogicalPartitionId` on the returned
+// request when the API request changes that field.
+func (asur APIVpcUpdateRequest) ToProto(vpc *cdbm.Vpc) *cwssaws.VpcUpdateRequest {
+	vpcProto := vpc.ToProto()
+	return &cwssaws.VpcUpdateRequest{
+		Id:                     vpcProto.Id,
+		NetworkSecurityGroupId: vpcProto.NetworkSecurityGroupId,
+		Metadata:               vpcProto.Metadata,
+	}
 }
 
 // APIVpcVirtualizationUpdateRequest captures the request data for updating virtualization type for a give VPC

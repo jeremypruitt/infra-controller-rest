@@ -43,7 +43,6 @@ import (
 	"github.com/NVIDIA/infra-controller-rest/api/internal/config"
 	common "github.com/NVIDIA/infra-controller-rest/api/pkg/api/handler/util/common"
 	"github.com/NVIDIA/infra-controller-rest/api/pkg/api/model"
-	"github.com/NVIDIA/infra-controller-rest/api/pkg/api/model/util"
 	"github.com/NVIDIA/infra-controller-rest/api/pkg/api/pagination"
 	sc "github.com/NVIDIA/infra-controller-rest/api/pkg/client/site"
 	auth "github.com/NVIDIA/infra-controller-rest/auth/pkg/authorization"
@@ -398,40 +397,13 @@ func (cvh CreateVPCHandler) Handle(c echo.Context) error {
 			return cutil.NewAPIError(http.StatusInternalServerError, "VNI value conversion failed despite passed validation", nil)
 		}
 
-		createVpcRequest := &cwssaws.VpcCreationRequest{
-			Id:                        &cwssaws.VpcId{Value: vpc.GetSiteID().String()},
-			Name:                      vpc.Name,
-			TenantOrganizationId:      tenant.Org,
-			NetworkVirtualizationType: &nwvt,
-			RoutingProfileType:        routingProfile,
-			NetworkSecurityGroupId:    vpc.NetworkSecurityGroupID,
-			Vni:                       vni,
-		}
-
-		// Add default NVLinkLogicalPartition ID if it is present
-		if vpc.NVLinkLogicalPartitionID != nil {
-			createVpcRequest.DefaultNvlinkLogicalPartitionId = &cwssaws.NVLinkLogicalPartitionId{Value: vpc.NVLinkLogicalPartitionID.String()}
-		}
+		createVpcRequest := apiRequest.ToProto(vpc, &nwvt, vni, routingProfile)
 
 		workflowOptions := temporalClient.StartWorkflowOptions{
 			ID:                       "vpc-create-" + vpc.ID.String(),
 			TaskQueue:                queue.SiteTaskQueue,
 			WorkflowExecutionTimeout: cutil.WorkflowExecutionTimeout,
 		}
-
-		// Vpc metadata info
-		metadata := &cwssaws.Metadata{
-			Name:        vpc.Name,
-			Description: "",
-		}
-
-		// Include descripotion if it is present
-		if vpc.Description != nil {
-			metadata.Description = *vpc.Description
-		}
-
-		metadata.Labels = util.ProtobufLabelsFromAPILabels(vpc.Labels)
-		createVpcRequest.Metadata = metadata
 
 		logger.Info().Msg("triggering VPC create workflow")
 
@@ -847,7 +819,7 @@ func (uvh UpdateVPCHandler) Handle(c echo.Context) error {
 			return cutil.NewAPIError(http.StatusInternalServerError, "Failed to retrieve client for Site", nil)
 		}
 
-		updateVpcRequest := vpc.ToUpdateRequestProto()
+		updateVpcRequest := apiRequest.ToProto(vpc)
 
 		// Propagate the NVLink Logical Partition ID change to the site controller
 		if apiRequest.NVLinkLogicalPartitionID != nil {

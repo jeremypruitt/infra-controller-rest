@@ -25,8 +25,10 @@ import (
 	"github.com/NVIDIA/infra-controller-rest/api/pkg/api/model/util"
 	cdb "github.com/NVIDIA/infra-controller-rest/db/pkg/db"
 	cdbm "github.com/NVIDIA/infra-controller-rest/db/pkg/db/model"
+	cwssaws "github.com/NVIDIA/infra-controller-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAPIVpcCreateRequest_Validate(t *testing.T) {
@@ -528,4 +530,99 @@ func TestNewAPIVpc(t *testing.T) {
 			assert.Equal(t, tt.want.Updated, got.Updated)
 		})
 	}
+}
+
+func TestAPIVpcCreateRequest_ToProto(t *testing.T) {
+	id := uuid.New()
+	desc := "primary"
+	nsg := "nsg-1"
+	nvllpID := uuid.New()
+
+	t.Run("populates id, metadata, NSG, NVLink, and create-specific fields", func(t *testing.T) {
+		vpc := &cdbm.Vpc{
+			ID:                       id,
+			Org:                      "org-1",
+			Name:                     "vpc-a",
+			Description:              &desc,
+			NetworkSecurityGroupID:   &nsg,
+			NVLinkLogicalPartitionID: &nvllpID,
+			Labels:                   map[string]string{"env": "prod"},
+		}
+		nwvt := cwssaws.VpcVirtualizationType_FNN
+		var vni uint32 = 4242
+		profile := "INTERNAL"
+		got := APIVpcCreateRequest{}.ToProto(vpc, &nwvt, &vni, &profile)
+
+		require.NotNil(t, got)
+		require.NotNil(t, got.Id)
+		assert.Equal(t, id.String(), got.Id.Value)
+		assert.Equal(t, "vpc-a", got.Name)
+		assert.Equal(t, "org-1", got.TenantOrganizationId)
+		require.NotNil(t, got.NetworkVirtualizationType)
+		assert.Equal(t, cwssaws.VpcVirtualizationType_FNN, *got.NetworkVirtualizationType)
+		require.NotNil(t, got.RoutingProfileType)
+		assert.Equal(t, "INTERNAL", *got.RoutingProfileType)
+		require.NotNil(t, got.NetworkSecurityGroupId)
+		assert.Equal(t, "nsg-1", *got.NetworkSecurityGroupId)
+		require.NotNil(t, got.Vni)
+		assert.Equal(t, uint32(4242), *got.Vni)
+		require.NotNil(t, got.Metadata)
+		assert.Equal(t, "vpc-a", got.Metadata.Name)
+		assert.Equal(t, "primary", got.Metadata.Description)
+		require.NotNil(t, got.DefaultNvlinkLogicalPartitionId)
+		assert.Equal(t, nvllpID.String(), got.DefaultNvlinkLogicalPartitionId.Value)
+	})
+
+	t.Run("nil derived inputs flow through", func(t *testing.T) {
+		vpc := &cdbm.Vpc{ID: id, Org: "org-1", Name: "vpc-a"}
+		got := APIVpcCreateRequest{}.ToProto(vpc, nil, nil, nil)
+		require.NotNil(t, got)
+		assert.Nil(t, got.NetworkVirtualizationType)
+		assert.Nil(t, got.RoutingProfileType)
+		assert.Nil(t, got.Vni)
+		assert.Nil(t, got.NetworkSecurityGroupId)
+		assert.Nil(t, got.DefaultNvlinkLogicalPartitionId)
+	})
+}
+
+func TestAPIVpcUpdateRequest_ToProto(t *testing.T) {
+	id := uuid.New()
+	desc := "primary"
+	nsg := "nsg-1"
+
+	t.Run("populates id, metadata, and NSG from the merged-into-DB vpc", func(t *testing.T) {
+		vpc := &cdbm.Vpc{
+			ID:                     id,
+			Name:                   "vpc-a",
+			Description:            &desc,
+			NetworkSecurityGroupID: &nsg,
+			Labels:                 map[string]string{"env": "prod"},
+		}
+		got := APIVpcUpdateRequest{}.ToProto(vpc)
+		require.NotNil(t, got)
+		require.NotNil(t, got.Id)
+		assert.Equal(t, id.String(), got.Id.Value)
+		require.NotNil(t, got.NetworkSecurityGroupId)
+		assert.Equal(t, "nsg-1", *got.NetworkSecurityGroupId)
+		require.NotNil(t, got.Metadata)
+		assert.Equal(t, "vpc-a", got.Metadata.Name)
+		assert.Equal(t, "primary", got.Metadata.Description)
+		require.Len(t, got.Metadata.Labels, 1)
+	})
+
+	t.Run("explicit NSG clear preserves empty string (distinct from nil)", func(t *testing.T) {
+		empty := ""
+		vpc := &cdbm.Vpc{ID: id, Name: "vpc-a", NetworkSecurityGroupID: &empty}
+		got := APIVpcUpdateRequest{}.ToProto(vpc)
+		require.NotNil(t, got.NetworkSecurityGroupId)
+		assert.Equal(t, "", *got.NetworkSecurityGroupId)
+	})
+
+	t.Run("uses ControllerVpcID for the request Id when set", func(t *testing.T) {
+		ctrlID := uuid.New()
+		vpc := &cdbm.Vpc{ID: id, ControllerVpcID: &ctrlID, Name: "vpc-a"}
+		got := APIVpcUpdateRequest{}.ToProto(vpc)
+		require.NotNil(t, got.Id)
+		assert.Equal(t, ctrlID.String(), got.Id.Value)
+	})
 }
