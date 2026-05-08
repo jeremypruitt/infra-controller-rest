@@ -17,7 +17,7 @@ nameOverride: ""
 namespaceOverride: ""
 
 image:
-  name: nico-rest-cert-manager
+  name: carbide-rest-cert-manager
 
 replicaCount: 1
 

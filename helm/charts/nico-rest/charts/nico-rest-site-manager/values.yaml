@@ -19,7 +19,7 @@ nameOverride: ""
 namespaceOverride: ""
 
 image:
-  name: nico-rest-site-manager
+  name: carbide-rest-site-manager
 
 service:
   type: ClusterIP

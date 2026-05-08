@@ -17,7 +17,7 @@ nameOverride: ""
 namespaceOverride: ""
 
 image:
-  name: nico-rest-db
+  name: carbide-rest-db
 
 waitForPostgres:
   image: postgres:14.4-alpine

@@ -32,7 +32,7 @@ nameOverride: ""
 namespaceOverride: ""
 
 image:
-  name: nico-rest-site-agent
+  name: carbide-rest-site-agent
 
 service:
   type: ClusterIP
