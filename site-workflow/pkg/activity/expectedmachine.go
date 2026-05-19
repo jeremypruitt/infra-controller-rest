@@ -33,14 +33,14 @@ import (
 
 	swe "github.com/NVIDIA/infra-controller-rest/site-workflow/pkg/error"
 	cclient "github.com/NVIDIA/infra-controller-rest/site-workflow/pkg/grpc/client"
-	rlav1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/rla/protobuf/v1"
+	flowv1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/flow/protobuf/v1"
 	cwssaws "github.com/NVIDIA/infra-controller-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // ManageExpectedMachineInventory is an activity wrapper for Expected Machine inventory collection and publishing
 type ManageExpectedMachineInventory struct {
 	siteID                uuid.UUID
-	nicoCoreAtomicClient  *cclient.NICoCoreAtomicClient
+	coreGrpcAtomicClient  *cclient.CoreGrpcAtomicClient
 	temporalPublishClient tClient.Client
 	temporalPublishQueue  string
 	cloudPageSize         int
@@ -63,16 +63,16 @@ func (memi *ManageExpectedMachineInventory) DiscoverExpectedMachineInventory(ctx
 	}
 
 	// Get Site Controller gRPC client
-	nicoClient := memi.nicoCoreAtomicClient.GetClient()
-	if nicoClient == nil {
-		return cclient.ErrClientNotConnected
+	grpcClient := memi.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return cclient.ErrCoreGrpcClientNotConnected
 	}
-	rpcClient := nicoClient.NICo()
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
 	// Call GetAllExpectedMachines to get full list of ExpectedMachines on Site
-	emList, err := rpcClient.GetAllExpectedMachines(ctx, &emptypb.Empty{})
+	emList, err := grpcServiceClient.GetAllExpectedMachines(ctx, &emptypb.Empty{})
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to retrieve ExpectedMachines using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to retrieve ExpectedMachines using Core gRPC API")
 
 		// Error encountered before we've published anything, report inventory collection error to Cloud
 		inventory := &cwssaws.ExpectedMachineInventory{
@@ -92,9 +92,9 @@ func (memi *ManageExpectedMachineInventory) DiscoverExpectedMachineInventory(ctx
 	}
 
 	// Call GetAllExpectedMachinesLinked to get linked Machine IDs
-	linkedList, lerr := rpcClient.GetAllExpectedMachinesLinked(ctx, &emptypb.Empty{})
+	linkedList, lerr := grpcServiceClient.GetAllExpectedMachinesLinked(ctx, &emptypb.Empty{})
 	if lerr != nil {
-		logger.Warn().Err(lerr).Msg("Failed to retrieve linked Machine IDs using Site Controller API")
+		logger.Warn().Err(lerr).Msg("Failed to retrieve linked Machine IDs using Core gRPC API")
 
 		// Fatal error - report inventory collection error to Cloud
 		inventory := &cwssaws.ExpectedMachineInventory{
@@ -244,10 +244,10 @@ func getPagedExpectedMachineInventory(
 }
 
 // NewManageExpectedMachineInventory returns a ManageInventory implementation for Expected Machine activity
-func NewManageExpectedMachineInventory(siteID uuid.UUID, nicoCoreAtomicClient *cclient.NICoCoreAtomicClient, temporalPublishClient tClient.Client, temporalPublishQueue string, cloudPageSize int) ManageExpectedMachineInventory {
+func NewManageExpectedMachineInventory(siteID uuid.UUID, coreGrpcAtomicClient *cclient.CoreGrpcAtomicClient, temporalPublishClient tClient.Client, temporalPublishQueue string, cloudPageSize int) ManageExpectedMachineInventory {
 	return ManageExpectedMachineInventory{
 		siteID:                siteID,
-		nicoCoreAtomicClient:  nicoCoreAtomicClient,
+		coreGrpcAtomicClient:  coreGrpcAtomicClient,
 		temporalPublishClient: temporalPublishClient,
 		temporalPublishQueue:  temporalPublishQueue,
 		cloudPageSize:         cloudPageSize,
@@ -256,15 +256,15 @@ func NewManageExpectedMachineInventory(siteID uuid.UUID, nicoCoreAtomicClient *c
 
 // ManageExpectedMachine is an activity wrapper for Expected Machine management
 type ManageExpectedMachine struct {
-	NICoCoreAtomicClient *cclient.NICoCoreAtomicClient
-	RlaAtomicClient      *cclient.RlaAtomicClient
+	coreGrpcAtomicClient *cclient.CoreGrpcAtomicClient
+	flowGrpcAtomicClient *cclient.FlowGrpcAtomicClient
 }
 
 // NewManageExpectedMachine returns a new ManageExpectedMachine client
-func NewManageExpectedMachine(nicoClient *cclient.NICoCoreAtomicClient, rlaClient *cclient.RlaAtomicClient) ManageExpectedMachine {
+func NewManageExpectedMachine(coreGrpcAtomicClient *cclient.CoreGrpcAtomicClient, flowGrpcAtomicClient *cclient.FlowGrpcAtomicClient) ManageExpectedMachine {
 	return ManageExpectedMachine{
-		NICoCoreAtomicClient: nicoClient,
-		RlaAtomicClient:      rlaClient,
+		coreGrpcAtomicClient: coreGrpcAtomicClient,
+		flowGrpcAtomicClient: flowGrpcAtomicClient,
 	}
 }
 
@@ -289,17 +289,17 @@ func (mem *ManageExpectedMachine) CreateExpectedMachineOnSite(ctx context.Contex
 		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
 	}
 
-	// Call Site Controller gRPC endpoint
-	nicoClient := mem.NICoCoreAtomicClient.GetClient()
-	if nicoClient == nil {
-		return cclient.ErrClientNotConnected
+	// Call Core gRPC API endpoint
+	grpcClient := mem.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return cclient.ErrCoreGrpcClientNotConnected
 	}
-	rpcClient := nicoClient.NICo()
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
-	// Call NICo gRPC endpoint
-	_, err = rpcClient.AddExpectedMachine(ctx, request)
+	// Call Core gRPC endpoint
+	_, err = grpcServiceClient.AddExpectedMachine(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to create Expected Machine using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to create Expected Machine using Core gRPC API")
 		return swe.WrapErr(err)
 	}
 
@@ -329,16 +329,16 @@ func (mem *ManageExpectedMachine) UpdateExpectedMachineOnSite(ctx context.Contex
 		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
 	}
 
-	// Call Site Controller gRPC endpoint
-	nicoClient := mem.NICoCoreAtomicClient.GetClient()
-	if nicoClient == nil {
-		return cclient.ErrClientNotConnected
+	// Call Core gRPC API endpoint
+	grpcClient := mem.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return cclient.ErrCoreGrpcClientNotConnected
 	}
-	rpcClient := nicoClient.NICo()
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
-	_, err = rpcClient.UpdateExpectedMachine(ctx, request)
+	_, err = grpcServiceClient.UpdateExpectedMachine(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to update Expected Machine using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to update Expected Machine using Core gRPC API")
 		return swe.WrapErr(err)
 	}
 
@@ -366,16 +366,16 @@ func (mem *ManageExpectedMachine) DeleteExpectedMachineOnSite(ctx context.Contex
 		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
 	}
 
-	// Call Site Controller gRPC endpoint
-	nicoClient := mem.NICoCoreAtomicClient.GetClient()
-	if nicoClient == nil {
-		return cclient.ErrClientNotConnected
+	// Call Core gRPC API endpoint
+	grpcClient := mem.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return cclient.ErrCoreGrpcClientNotConnected
 	}
-	rpcClient := nicoClient.NICo()
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
-	_, err = rpcClient.DeleteExpectedMachine(ctx, request)
+	_, err = grpcServiceClient.DeleteExpectedMachine(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to delete Expected Machine using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to delete Expected Machine using Core gRPC API")
 		return swe.WrapErr(err)
 	}
 
@@ -404,16 +404,16 @@ func (mem *ManageExpectedMachine) CreateExpectedMachinesOnSite(ctx context.Conte
 	}
 
 	// Call Site Controller gRPC batch endpoint
-	nicoClient := mem.NICoCoreAtomicClient.GetClient()
-	if nicoClient == nil {
-		return nil, cclient.ErrClientNotConnected
+	grpcClient := mem.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return nil, cclient.ErrCoreGrpcClientNotConnected
 	}
-	rpcClient := nicoClient.NICo()
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
 	// Call the batch CreateExpectedMachines endpoint
-	response, err := rpcClient.CreateExpectedMachines(ctx, request)
+	response, err := grpcServiceClient.CreateExpectedMachines(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to create Expected Machines using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to create Expected Machines using Core gRPC API")
 		return nil, swe.WrapErr(err)
 	}
 
@@ -437,33 +437,33 @@ func (mem *ManageExpectedMachine) CreateExpectedMachinesOnSite(ctx context.Conte
 	return response, nil
 }
 
-// CreateExpectedMachineOnRLA creates an Expected Machine as a component in RLA via AddComponent
-func (mem *ManageExpectedMachine) CreateExpectedMachineOnRLA(ctx context.Context, request *cwssaws.ExpectedMachine) error {
-	logger := log.With().Str("Activity", "CreateExpectedMachineOnRLA").Logger()
+// CreateExpectedMachineOnFlow creates an Expected Machine as a component in Flow via AddComponent
+func (mem *ManageExpectedMachine) CreateExpectedMachineOnFlow(ctx context.Context, request *cwssaws.ExpectedMachine) error {
+	logger := log.With().Str("Activity", "CreateExpectedMachineOnFlow").Logger()
 
 	logger.Info().Msg("Starting activity")
 
 	// Validate request
 	if request == nil {
-		return temporal.NewNonRetryableApplicationError("received empty create Expected Machine request for RLA", swe.ErrTypeInvalidRequest, errors.New("nil request"))
+		return temporal.NewNonRetryableApplicationError("received empty create Expected Machine request for Flow", swe.ErrTypeInvalidRequest, errors.New("nil request"))
 	}
 
-	// If RLA client is not configured, skip gracefully
-	if mem.RlaAtomicClient == nil {
-		logger.Warn().Msg("RLA client not configured, skipping RLA component creation")
+	// If Flow client is not configured, skip gracefully
+	if mem.flowGrpcAtomicClient == nil {
+		logger.Warn().Msg("Flow client not configured, skipping Flow component creation")
 		return nil
 	}
 
-	rlaClient := mem.RlaAtomicClient.GetClient()
-	if rlaClient == nil {
-		logger.Warn().Msg("RLA client not connected, skipping RLA component creation")
+	flowClient := mem.flowGrpcAtomicClient.GetClient()
+	if flowClient == nil {
+		logger.Warn().Msg("Flow client not connected, skipping Flow component creation")
 		return nil
 	}
 
-	component := expectedMachineToRLAComponent(request)
-	_, err := rlaClient.Rla().AddComponent(ctx, &rlav1.AddComponentRequest{Component: component})
+	component := expectedMachineToFlowComponent(request)
+	_, err := flowClient.GrpcServiceClient().AddComponent(ctx, &flowv1.AddComponentRequest{Component: component})
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to create Expected Machine component on RLA")
+		logger.Warn().Err(err).Msg("Failed to create Expected Machine component on Flow")
 		return swe.WrapErr(err)
 	}
 
@@ -471,35 +471,35 @@ func (mem *ManageExpectedMachine) CreateExpectedMachineOnRLA(ctx context.Context
 	return nil
 }
 
-// CreateExpectedMachinesOnRLA creates multiple Expected Machines as components in RLA via AddComponent
-func (mem *ManageExpectedMachine) CreateExpectedMachinesOnRLA(ctx context.Context, request *cwssaws.BatchExpectedMachineOperationRequest) error {
-	logger := log.With().Str("Activity", "CreateExpectedMachinesOnRLA").Logger()
+// CreateExpectedMachinesOnFlow creates multiple Expected Machines as components in Flow via AddComponent
+func (mem *ManageExpectedMachine) CreateExpectedMachinesOnFlow(ctx context.Context, request *cwssaws.BatchExpectedMachineOperationRequest) error {
+	logger := log.With().Str("Activity", "CreateExpectedMachinesOnFlow").Logger()
 
 	logger.Info().Msg("Starting activity")
 
-	// If RLA client is not configured, skip gracefully
-	if mem.RlaAtomicClient == nil {
-		logger.Warn().Msg("RLA client not configured, skipping RLA component creation")
+	// If Flow client is not configured, skip gracefully
+	if mem.flowGrpcAtomicClient == nil {
+		logger.Warn().Msg("Flow client not configured, skipping Flow component creation")
 		return nil
 	}
 
-	rlaClient := mem.RlaAtomicClient.GetClient()
-	if rlaClient == nil {
-		logger.Warn().Msg("RLA client not connected, skipping RLA component creation")
+	flowClient := mem.flowGrpcAtomicClient.GetClient()
+	if flowClient == nil {
+		logger.Warn().Msg("Flow client not connected, skipping Flow component creation")
 		return nil
 	}
 
-	rla := rlaClient.Rla()
+	grpcServiceClient := flowClient.GrpcServiceClient()
 	machines := request.GetExpectedMachines().GetExpectedMachines()
 	successes := 0
 	failures := 0
 
-	// TODO(chet): Work with RLA team to add batch support so we don't have to loop here.
+	// TODO(chet): Work with Flow team to add batch support so we don't have to loop here.
 	for _, machine := range machines {
-		component := expectedMachineToRLAComponent(machine)
-		_, err := rla.AddComponent(ctx, &rlav1.AddComponentRequest{Component: component})
+		component := expectedMachineToFlowComponent(machine)
+		_, err := grpcServiceClient.AddComponent(ctx, &flowv1.AddComponentRequest{Component: component})
 		if err != nil {
-			logger.Warn().Err(err).Str("ID", machine.GetId().GetValue()).Msg("Failed to create Expected Machine component on RLA")
+			logger.Warn().Err(err).Str("ID", machine.GetId().GetValue()).Msg("Failed to create Expected Machine component on Flow")
 			failures++
 		} else {
 			successes++
@@ -515,17 +515,17 @@ func (mem *ManageExpectedMachine) CreateExpectedMachinesOnRLA(ctx context.Contex
 	return nil
 }
 
-// expectedMachineToRLAComponent converts a NICo ExpectedMachine proto to an RLA Component proto
-func expectedMachineToRLAComponent(em *cwssaws.ExpectedMachine) *rlav1.Component {
-	component := &rlav1.Component{
-		Type: rlav1.ComponentType_COMPONENT_TYPE_COMPUTE,
-		Info: &rlav1.DeviceInfo{
-			Id:           &rlav1.UUID{Id: em.GetId().GetValue()},
+// expectedMachineToFlowComponent converts a NICo ExpectedMachine proto to an Flow Component proto
+func expectedMachineToFlowComponent(em *cwssaws.ExpectedMachine) *flowv1.Component {
+	component := &flowv1.Component{
+		Type: flowv1.ComponentType_COMPONENT_TYPE_COMPUTE,
+		Info: &flowv1.DeviceInfo{
+			Id:           &flowv1.UUID{Id: em.GetId().GetValue()},
 			SerialNumber: em.GetChassisSerialNumber(),
 		},
-		Bmcs: []*rlav1.BMCInfo{
+		Bmcs: []*flowv1.BMCInfo{
 			{
-				Type:       rlav1.BMCType_BMC_TYPE_HOST,
+				Type:       flowv1.BMCType_BMC_TYPE_HOST,
 				MacAddress: em.GetBmcMacAddress(),
 			},
 		},
@@ -553,7 +553,7 @@ func expectedMachineToRLAComponent(em *cwssaws.ExpectedMachine) *rlav1.Component
 
 	// Rack position
 	if em.SlotId != nil || em.TrayIdx != nil || em.HostId != nil {
-		pos := &rlav1.RackPosition{}
+		pos := &flowv1.RackPosition{}
 		if em.SlotId != nil {
 			pos.SlotId = *em.SlotId
 		}
@@ -567,7 +567,7 @@ func expectedMachineToRLAComponent(em *cwssaws.ExpectedMachine) *rlav1.Component
 	}
 
 	if rackID := em.GetRackId().GetId(); rackID != "" {
-		component.RackId = &rlav1.UUID{Id: rackID}
+		component.RackId = &flowv1.UUID{Id: rackID}
 	}
 
 	return component
@@ -593,16 +593,16 @@ func (mem *ManageExpectedMachine) UpdateExpectedMachinesOnSite(ctx context.Conte
 	}
 
 	// Call Site Controller gRPC batch endpoint
-	nicoClient := mem.NICoCoreAtomicClient.GetClient()
-	if nicoClient == nil {
-		return nil, cclient.ErrClientNotConnected
+	grpcClient := mem.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return nil, cclient.ErrCoreGrpcClientNotConnected
 	}
-	rpcClient := nicoClient.NICo()
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
 	// Call the batch UpdateExpectedMachines endpoint
-	response, err := rpcClient.UpdateExpectedMachines(ctx, request)
+	response, err := grpcServiceClient.UpdateExpectedMachines(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to update Expected Machines using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to update Expected Machines using Core gRPC API")
 		return nil, swe.WrapErr(err)
 	}
 

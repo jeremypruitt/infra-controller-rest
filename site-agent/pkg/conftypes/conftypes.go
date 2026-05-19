@@ -86,32 +86,32 @@ func (tc *TemporalConfig) GetTemporalClientKeyFullPath() string {
 	return tc.TemporalCertPath + "/client/" + file
 }
 
-// NICoConfig holds configurations for connecting to NICo server
-type NICoConfig struct {
-	Address        string               `json:"nicoAddress"`
-	Secure         client.SecureOptions `json:"nicoSecureOptions"`
-	SkipServerAuth bool                 `json:"nicoSkipServerAuth"`
-	ServerCAPath   string               `json:"nicoCertPath"`
-	ClientCertPath string               `json:"nicoClientCertPath"`
-	ClientKeyPath  string               `json:"nicoClientKeyPath"`
+// CoreGrpcConfig holds configurations for connecting to CoreGrpc server
+type CoreGrpcConfig struct {
+	Address        string               `json:"coreGrpcAddress"`
+	Secure         client.SecureOptions `json:"coreGrpcSecureOptions"`
+	SkipServerAuth bool                 `json:"coreGrpcSkipServerAuth"`
+	ServerCAPath   string               `json:"coreGrpcCertPath"`
+	ClientCertPath string               `json:"coreGrpcClientCertPath"`
+	ClientKeyPath  string               `json:"coreGrpcClientKeyPath"`
 }
 
-// RLAConfig holds configurations for connecting to RLA server
-type RLAConfig struct {
-	Enabled        bool                          `json:"rlaEnabled"`
-	Address        string                        `json:"rlaAddress"`
-	Secure         client.RlaClientSecureOptions `json:"rlaSecureOptions"`
-	SkipServerAuth bool                          `json:"rlaSkipServerAuth"`
-	ServerCAPath   string                        `json:"rlaCertPath"`
-	ClientCertPath string                        `json:"rlaClientCertPath"`
-	ClientKeyPath  string                        `json:"rlaClientKeyPath"`
+// FlowGrpcConfig holds configurations for connecting to Flow gRPC server
+type FlowGrpcConfig struct {
+	Enabled        bool                               `json:"flowGrpcEnabled"`
+	Address        string                             `json:"flowGrpcAddress"`
+	Secure         client.FlowGrpcClientSecureOptions `json:"flowGrpcSecureOptions"`
+	SkipServerAuth bool                               `json:"flowGrpcSkipServerAuth"`
+	ServerCAPath   string                             `json:"flowGrpcCertPath"`
+	ClientCertPath string                             `json:"flowGrpcClientCertPath"`
+	ClientKeyPath  string                             `json:"flowGrpcClientKeyPath"`
 }
 
 // Config for Site Agent
 type Config struct {
 	Temporal         TemporalConfig
-	NICo             NICoConfig
-	RLA              RLAConfig
+	CoreGrpc         CoreGrpcConfig
+	FlowGrpc         FlowGrpcConfig
 	IsMasterPod      bool          `json:"isMasterPod"`
 	EnableDebug      bool          `json:"enableDebug"`
 	DevMode          bool          `json:"devMode"`
@@ -142,7 +142,7 @@ func NewConfType() *Config {
 	// We can set the default config here
 	return &Config{
 		Temporal: TemporalConfig{},
-		NICo:     NICoConfig{},
-		RLA:      RLAConfig{},
+		CoreGrpc: CoreGrpcConfig{},
+		FlowGrpc: FlowGrpcConfig{},
 	}
 }

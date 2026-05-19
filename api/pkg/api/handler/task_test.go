@@ -34,7 +34,7 @@ import (
 	authz "github.com/NVIDIA/infra-controller-rest/auth/pkg/authorization"
 	"github.com/NVIDIA/infra-controller-rest/common/pkg/otelecho"
 	cdbm "github.com/NVIDIA/infra-controller-rest/db/pkg/db/model"
-	rlav1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/rla/protobuf/v1"
+	flowv1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/flow/protobuf/v1"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -56,15 +56,15 @@ func TestGetTaskHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
-	siteNoRLA := &cdbm.Site{
+	siteNoFlow := &cdbm.Site{
 		ID:                       uuid.New(),
-		Name:                     "test-site-no-rla",
+		Name:                     "test-site-no-flow",
 		Org:                      org,
 		InfrastructureProviderID: site.InfrastructureProviderID,
 		Status:                   cdbm.SiteStatusRegistered,
 		Config:                   &cdbm.SiteConfig{},
 	}
-	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	_, err := dbSession.DB.NewInsert().Model(siteNoFlow).Exec(context.Background())
 	assert.Nil(t, err)
 
 	providerUser := testRackBuildUser(t, dbSession, "provider-user-task-get", org, []string{authz.ProviderAdminRole})
@@ -74,12 +74,12 @@ func TestGetTaskHandler_Handle(t *testing.T) {
 
 	taskUUID := uuid.New().String()
 
-	mockTask := &rlav1.Task{
-		Id:          &rlav1.UUID{Id: taskUUID},
+	mockTask := &flowv1.Task{
+		Id:          &flowv1.UUID{Id: taskUUID},
 		Operation:   "power_on",
-		RackId:      &rlav1.UUID{Id: uuid.New().String()},
+		RackId:      &flowv1.UUID{Id: uuid.New().String()},
 		Description: "Power on rack",
-		Status:      rlav1.TaskStatus_TASK_STATUS_RUNNING,
+		Status:      flowv1.TaskStatus_TASK_STATUS_RUNNING,
 		Message:     "Processing",
 	}
 
@@ -92,7 +92,7 @@ func TestGetTaskHandler_Handle(t *testing.T) {
 		user           *cdbm.User
 		taskUUID       string
 		queryParams    map[string]string
-		mockTasks      []*rlav1.Task
+		mockTasks      []*flowv1.Task
 		expectedStatus int
 	}{
 		{
@@ -103,7 +103,7 @@ func TestGetTaskHandler_Handle(t *testing.T) {
 			queryParams: map[string]string{
 				"siteId": site.ID.String(),
 			},
-			mockTasks:      []*rlav1.Task{mockTask},
+			mockTasks:      []*flowv1.Task{mockTask},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -114,16 +114,16 @@ func TestGetTaskHandler_Handle(t *testing.T) {
 			queryParams: map[string]string{
 				"siteId": site.ID.String(),
 			},
-			mockTasks:      []*rlav1.Task{},
+			mockTasks:      []*flowv1.Task{},
 			expectedStatus: http.StatusNotFound,
 		},
 		{
-			name:     "failure - RLA not enabled on site",
+			name:     "failure - Flow not enabled on site",
 			reqOrg:   org,
 			user:     providerUser,
 			taskUUID: taskUUID,
 			queryParams: map[string]string{
-				"siteId": siteNoRLA.ID.String(),
+				"siteId": siteNoFlow.ID.String(),
 			},
 			expectedStatus: http.StatusPreconditionFailed,
 		},
@@ -166,7 +166,7 @@ func TestGetTaskHandler_Handle(t *testing.T) {
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			if tt.mockTasks != nil {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.GetTasksByIDsResponse)
+					resp := args.Get(1).(*flowv1.GetTasksByIDsResponse)
 					resp.Tasks = tt.mockTasks
 				}).Return(nil)
 			}
@@ -225,15 +225,15 @@ func TestCancelTaskHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
-	siteNoRLA := &cdbm.Site{
+	siteNoFlow := &cdbm.Site{
 		ID:                       uuid.New(),
-		Name:                     "test-site-no-rla-cancel",
+		Name:                     "test-site-no-flow-cancel",
 		Org:                      org,
 		InfrastructureProviderID: site.InfrastructureProviderID,
 		Status:                   cdbm.SiteStatusRegistered,
 		Config:                   &cdbm.SiteConfig{},
 	}
-	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	_, err := dbSession.DB.NewInsert().Model(siteNoFlow).Exec(context.Background())
 	assert.Nil(t, err)
 
 	providerUser := testRackBuildUser(t, dbSession, "provider-user-task-cancel", org, []string{authz.ProviderAdminRole})
@@ -243,12 +243,12 @@ func TestCancelTaskHandler_Handle(t *testing.T) {
 
 	taskUUID := uuid.New().String()
 
-	cancelledTask := &rlav1.Task{
-		Id:          &rlav1.UUID{Id: taskUUID},
+	cancelledTask := &flowv1.Task{
+		Id:          &flowv1.UUID{Id: taskUUID},
 		Operation:   "power_on",
-		RackId:      &rlav1.UUID{Id: uuid.New().String()},
+		RackId:      &flowv1.UUID{Id: uuid.New().String()},
 		Description: "Power on rack",
-		Status:      rlav1.TaskStatus_TASK_STATUS_TERMINATED,
+		Status:      flowv1.TaskStatus_TASK_STATUS_TERMINATED,
 		Message:     "Cancelled by user",
 	}
 
@@ -261,7 +261,7 @@ func TestCancelTaskHandler_Handle(t *testing.T) {
 		user           *cdbm.User
 		taskUUID       string
 		body           any
-		mockTask       *rlav1.Task
+		mockTask       *flowv1.Task
 		mockExecErr    error
 		expectedStatus int
 	}{
@@ -275,11 +275,11 @@ func TestCancelTaskHandler_Handle(t *testing.T) {
 			expectedStatus: http.StatusAccepted,
 		},
 		{
-			name:           "failure - RLA not enabled on site",
+			name:           "failure - Flow not enabled on site",
 			reqOrg:         org,
 			user:           providerUser,
 			taskUUID:       taskUUID,
-			body:           model.APICancelTaskRequest{SiteID: siteNoRLA.ID.String()},
+			body:           model.APICancelTaskRequest{SiteID: siteNoFlow.ID.String()},
 			expectedStatus: http.StatusPreconditionFailed,
 		},
 		{
@@ -332,7 +332,7 @@ func TestCancelTaskHandler_Handle(t *testing.T) {
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			if tt.mockTask != nil {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.CancelTaskResponse)
+					resp := args.Get(1).(*flowv1.CancelTaskResponse)
 					resp.Task = tt.mockTask
 				}).Return(nil)
 			}

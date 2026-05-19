@@ -35,7 +35,7 @@ env:
 
 jobs:
   build-binaries:
-    name: Build Binaries
+    name: Build Binaries (${{ matrix.name }}, ${{ matrix.path }})
     runs-on: ${{ inputs.runner }}
     strategy:
       fail-fast: false
@@ -53,12 +53,12 @@ jobs:
             path: ./site-agent/cmd/site-agent
           - name: mock-core
             path: ./site-agent/cmd/mock-core
-          - name: mock-rla
-            path: ./site-agent/cmd/mock-rla
+          - name: mock-flow
+            path: ./site-agent/cmd/mock-flow
           - name: credsmgr
             path: ./cert-manager/cmd/credsmgr
-          - name: rla
-            path: ./rla
+          - name: flow
+            path: ./flow
           - name: psm
             path: ./powershelf-manager
           - name: nsm

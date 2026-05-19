@@ -33,14 +33,14 @@ import (
 
 	swe "github.com/NVIDIA/infra-controller-rest/site-workflow/pkg/error"
 	cclient "github.com/NVIDIA/infra-controller-rest/site-workflow/pkg/grpc/client"
-	rlav1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/rla/protobuf/v1"
+	flowv1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/flow/protobuf/v1"
 	cwssaws "github.com/NVIDIA/infra-controller-rest/workflow-schema/schema/site-agent/workflows/v1"
 )
 
 // ManageExpectedPowerShelfInventory is an activity wrapper for Expected Power Shelf inventory collection and publishing
 type ManageExpectedPowerShelfInventory struct {
 	siteID                uuid.UUID
-	nicoCoreAtomicClient  *cclient.NICoCoreAtomicClient
+	coreGrpcAtomicClient  *cclient.CoreGrpcAtomicClient
 	temporalPublishClient tClient.Client
 	temporalPublishQueue  string
 	cloudPageSize         int
@@ -63,13 +63,16 @@ func (mepsi *ManageExpectedPowerShelfInventory) DiscoverExpectedPowerShelfInvent
 	}
 
 	// Get Site Controller gRPC client
-	nicoClient := mepsi.nicoCoreAtomicClient.GetClient()
-	rpcClient := nicoClient.NICo()
+	grpcClient := mepsi.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return cclient.ErrCoreGrpcClientNotConnected
+	}
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
 	// Call GetAllExpectedPowerShelves to get full list of ExpectedPowerShelves on Site
-	epsList, err := rpcClient.GetAllExpectedPowerShelves(ctx, &emptypb.Empty{})
+	epsList, err := grpcServiceClient.GetAllExpectedPowerShelves(ctx, &emptypb.Empty{})
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to retrieve ExpectedPowerShelves using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to retrieve ExpectedPowerShelves using Core gRPC API")
 
 		// Error encountered before we've published anything, report inventory collection error to Cloud
 		inventory := &cwssaws.ExpectedPowerShelfInventory{
@@ -89,9 +92,9 @@ func (mepsi *ManageExpectedPowerShelfInventory) DiscoverExpectedPowerShelfInvent
 	}
 
 	// Call GetAllExpectedPowerShelvesLinked to get linked Power Shelf IDs
-	linkedList, lerr := rpcClient.GetAllExpectedPowerShelvesLinked(ctx, &emptypb.Empty{})
+	linkedList, lerr := grpcServiceClient.GetAllExpectedPowerShelvesLinked(ctx, &emptypb.Empty{})
 	if lerr != nil {
-		logger.Warn().Err(lerr).Msg("Failed to retrieve linked Power Shelf IDs using Site Controller API")
+		logger.Warn().Err(lerr).Msg("Failed to retrieve linked Power Shelf IDs using Core gRPC API")
 
 		// Fatal error - report inventory collection error to Cloud
 		inventory := &cwssaws.ExpectedPowerShelfInventory{
@@ -241,10 +244,10 @@ func getPagedExpectedPowerShelfInventory(
 }
 
 // NewManageExpectedPowerShelfInventory returns a ManageInventory implementation for Expected Power Shelf activity
-func NewManageExpectedPowerShelfInventory(siteID uuid.UUID, nicoCoreAtomicClient *cclient.NICoCoreAtomicClient, temporalPublishClient tClient.Client, temporalPublishQueue string, cloudPageSize int) ManageExpectedPowerShelfInventory {
+func NewManageExpectedPowerShelfInventory(siteID uuid.UUID, coreGrpcAtomicClient *cclient.CoreGrpcAtomicClient, temporalPublishClient tClient.Client, temporalPublishQueue string, cloudPageSize int) ManageExpectedPowerShelfInventory {
 	return ManageExpectedPowerShelfInventory{
 		siteID:                siteID,
-		nicoCoreAtomicClient:  nicoCoreAtomicClient,
+		coreGrpcAtomicClient:  coreGrpcAtomicClient,
 		temporalPublishClient: temporalPublishClient,
 		temporalPublishQueue:  temporalPublishQueue,
 		cloudPageSize:         cloudPageSize,
@@ -253,15 +256,15 @@ func NewManageExpectedPowerShelfInventory(siteID uuid.UUID, nicoCoreAtomicClient
 
 // ManageExpectedPowerShelf is an activity wrapper for Expected Power Shelf management
 type ManageExpectedPowerShelf struct {
-	NICoCoreAtomicClient *cclient.NICoCoreAtomicClient
-	RlaAtomicClient      *cclient.RlaAtomicClient
+	coreGrpcAtomicClient *cclient.CoreGrpcAtomicClient
+	flowGrpcAtomicClient *cclient.FlowGrpcAtomicClient
 }
 
 // NewManageExpectedPowerShelf returns a new ManageExpectedPowerShelf client
-func NewManageExpectedPowerShelf(nicoClient *cclient.NICoCoreAtomicClient, rlaClient *cclient.RlaAtomicClient) ManageExpectedPowerShelf {
+func NewManageExpectedPowerShelf(coreGrpcAtomicClient *cclient.CoreGrpcAtomicClient, flowGrpcAtomicClient *cclient.FlowGrpcAtomicClient) ManageExpectedPowerShelf {
 	return ManageExpectedPowerShelf{
-		NICoCoreAtomicClient: nicoClient,
-		RlaAtomicClient:      rlaClient,
+		coreGrpcAtomicClient: coreGrpcAtomicClient,
+		flowGrpcAtomicClient: flowGrpcAtomicClient,
 	}
 }
 
@@ -286,14 +289,17 @@ func (meps *ManageExpectedPowerShelf) CreateExpectedPowerShelfOnSite(ctx context
 		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
 	}
 
-	// Call Site Controller gRPC endpoint
-	nicoClient := meps.NICoCoreAtomicClient.GetClient()
-	rpcClient := nicoClient.NICo()
+	// Call Core gRPC API endpoint
+	grpcClient := meps.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return cclient.ErrCoreGrpcClientNotConnected
+	}
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
-	// Call NICo gRPC endpoint
-	_, err = rpcClient.AddExpectedPowerShelf(ctx, request)
+	// Call Core gRPC endpoint
+	_, err = grpcServiceClient.AddExpectedPowerShelf(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to create Expected Power Shelf using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to create Expected Power Shelf using Core gRPC API")
 		return swe.WrapErr(err)
 	}
 
@@ -323,13 +329,16 @@ func (meps *ManageExpectedPowerShelf) UpdateExpectedPowerShelfOnSite(ctx context
 		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
 	}
 
-	// Call Site Controller gRPC endpoint
-	nicoClient := meps.NICoCoreAtomicClient.GetClient()
-	rpcClient := nicoClient.NICo()
+	// Call Core gRPC API endpoint
+	grpcClient := meps.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return cclient.ErrCoreGrpcClientNotConnected
+	}
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
-	_, err = rpcClient.UpdateExpectedPowerShelf(ctx, request)
+	_, err = grpcServiceClient.UpdateExpectedPowerShelf(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to update Expected Power Shelf using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to update Expected Power Shelf using Core gRPC API")
 		return swe.WrapErr(err)
 	}
 
@@ -338,33 +347,34 @@ func (meps *ManageExpectedPowerShelf) UpdateExpectedPowerShelfOnSite(ctx context
 	return nil
 }
 
-// CreateExpectedPowerShelfOnRLA creates an Expected Power Shelf as a component in RLA via AddComponent
-func (meps *ManageExpectedPowerShelf) CreateExpectedPowerShelfOnRLA(ctx context.Context, request *cwssaws.ExpectedPowerShelf) error {
-	logger := log.With().Str("Activity", "CreateExpectedPowerShelfOnRLA").Logger()
+// CreateExpectedPowerShelfOnFlow creates an Expected Power Shelf as a component in Flow via AddComponent
+func (meps *ManageExpectedPowerShelf) CreateExpectedPowerShelfOnFlow(ctx context.Context, request *cwssaws.ExpectedPowerShelf) error {
+	logger := log.With().Str("Activity", "CreateExpectedPowerShelfOnFlow").Logger()
 
 	logger.Info().Msg("Starting activity")
 
 	// Validate request
 	if request == nil {
-		return temporal.NewNonRetryableApplicationError("received empty create Expected Power Shelf request for RLA", swe.ErrTypeInvalidRequest, errors.New("nil request"))
+		return temporal.NewNonRetryableApplicationError("received empty create Expected Power Shelf request for Flow", swe.ErrTypeInvalidRequest, errors.New("nil request"))
 	}
 
-	// If RLA client is not configured, skip gracefully
-	if meps.RlaAtomicClient == nil {
-		logger.Warn().Msg("RLA client not configured, skipping RLA component creation")
+	// If Flow client is not configured, skip gracefully
+	if meps.flowGrpcAtomicClient == nil {
+		logger.Warn().Msg("Flow client not configured, skipping Flow component creation")
 		return nil
 	}
 
-	rlaClient := meps.RlaAtomicClient.GetClient()
-	if rlaClient == nil {
-		logger.Warn().Msg("RLA client not connected, skipping RLA component creation")
+	grpcClient := meps.flowGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		logger.Warn().Msg("Flow client not connected, skipping Flow component creation")
 		return nil
 	}
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
-	component := expectedPowerShelfToRLAComponent(request)
-	_, err := rlaClient.Rla().AddComponent(ctx, &rlav1.AddComponentRequest{Component: component})
+	component := expectedPowerShelfToFlowComponent(request)
+	_, err := grpcServiceClient.AddComponent(ctx, &flowv1.AddComponentRequest{Component: component})
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to create Expected Power Shelf component on RLA")
+		logger.Warn().Err(err).Msg("Failed to create Expected Power Shelf component on Flow")
 		return swe.WrapErr(err)
 	}
 
@@ -372,17 +382,17 @@ func (meps *ManageExpectedPowerShelf) CreateExpectedPowerShelfOnRLA(ctx context.
 	return nil
 }
 
-// expectedPowerShelfToRLAComponent converts a NICo ExpectedPowerShelf proto to an RLA Component proto
-func expectedPowerShelfToRLAComponent(eps *cwssaws.ExpectedPowerShelf) *rlav1.Component {
-	component := &rlav1.Component{
-		Type: rlav1.ComponentType_COMPONENT_TYPE_POWERSHELF,
-		Info: &rlav1.DeviceInfo{
-			Id:           &rlav1.UUID{Id: eps.GetExpectedPowerShelfId().GetValue()},
+// expectedPowerShelfToFlowComponent converts a NICo ExpectedPowerShelf proto to an Flow Component proto
+func expectedPowerShelfToFlowComponent(eps *cwssaws.ExpectedPowerShelf) *flowv1.Component {
+	component := &flowv1.Component{
+		Type: flowv1.ComponentType_COMPONENT_TYPE_POWERSHELF,
+		Info: &flowv1.DeviceInfo{
+			Id:           &flowv1.UUID{Id: eps.GetExpectedPowerShelfId().GetValue()},
 			SerialNumber: eps.GetShelfSerialNumber(),
 		},
-		Bmcs: []*rlav1.BMCInfo{
+		Bmcs: []*flowv1.BMCInfo{
 			{
-				Type:       rlav1.BMCType_BMC_TYPE_HOST,
+				Type:       flowv1.BMCType_BMC_TYPE_HOST,
 				MacAddress: eps.GetBmcMacAddress(),
 			},
 		},
@@ -410,7 +420,7 @@ func expectedPowerShelfToRLAComponent(eps *cwssaws.ExpectedPowerShelf) *rlav1.Co
 
 	// Rack position
 	if eps.SlotId != nil || eps.TrayIdx != nil || eps.HostId != nil {
-		pos := &rlav1.RackPosition{}
+		pos := &flowv1.RackPosition{}
 		if eps.SlotId != nil {
 			pos.SlotId = *eps.SlotId
 		}
@@ -429,7 +439,7 @@ func expectedPowerShelfToRLAComponent(eps *cwssaws.ExpectedPowerShelf) *rlav1.Co
 	}
 
 	if rackID := eps.GetRackId().GetId(); rackID != "" {
-		component.RackId = &rlav1.UUID{Id: rackID}
+		component.RackId = &flowv1.UUID{Id: rackID}
 	}
 
 	return component
@@ -454,13 +464,16 @@ func (meps *ManageExpectedPowerShelf) DeleteExpectedPowerShelfOnSite(ctx context
 		return temporal.NewNonRetryableApplicationError(err.Error(), swe.ErrTypeInvalidRequest, err)
 	}
 
-	// Call Site Controller gRPC endpoint
-	nicoClient := meps.NICoCoreAtomicClient.GetClient()
-	rpcClient := nicoClient.NICo()
+	// Call Core gRPC API endpoint
+	grpcClient := meps.coreGrpcAtomicClient.GetClient()
+	if grpcClient == nil {
+		return cclient.ErrCoreGrpcClientNotConnected
+	}
+	grpcServiceClient := grpcClient.GrpcServiceClient()
 
-	_, err = rpcClient.DeleteExpectedPowerShelf(ctx, request)
+	_, err = grpcServiceClient.DeleteExpectedPowerShelf(ctx, request)
 	if err != nil {
-		logger.Warn().Err(err).Msg("Failed to delete Expected Power Shelf using Site Controller API")
+		logger.Warn().Err(err).Msg("Failed to delete Expected Power Shelf using Core gRPC API")
 		return swe.WrapErr(err)
 	}
 

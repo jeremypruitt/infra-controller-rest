@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	cClient "github.com/NVIDIA/infra-controller-rest/site-workflow/pkg/grpc/client"
-	rlav1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/rla/protobuf/v1"
+	flowv1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/flow/protobuf/v1"
 	cwssaws "github.com/NVIDIA/infra-controller-rest/workflow-schema/schema/site-agent/workflows/v1"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -33,10 +33,10 @@ import (
 )
 
 func TestManageExpectedMachineInventory_DiscoverExpectedMachineInventory(t *testing.T) {
-	mockNICo := cClient.NewMockNICoClient()
+	mockCoreGrpcClient := cClient.NewMockCoreGrpcClient()
 
-	nicoCoreAtomicClient := cClient.NewNICoCoreAtomicClient(&cClient.NICoCoreClientConfig{})
-	nicoCoreAtomicClient.SwapClient(mockNICo)
+	coreGrpcAtomicClient := cClient.NewCoreGrpcAtomicClient(&cClient.CoreGrpcClientConfig{})
+	coreGrpcAtomicClient.SwapClient(mockCoreGrpcClient)
 
 	wid := "test-workflow-id"
 	wrun := &tmocks.WorkflowRun{}
@@ -44,7 +44,7 @@ func TestManageExpectedMachineInventory_DiscoverExpectedMachineInventory(t *test
 
 	type fields struct {
 		siteID               uuid.UUID
-		nicoCoreAtomicClient *cClient.NICoCoreAtomicClient
+		coreGrpcAtomicClient *cClient.CoreGrpcAtomicClient
 		temporalPublishQueue string
 		sitePageSize         int
 		cloudPageSize        int
@@ -62,7 +62,7 @@ func TestManageExpectedMachineInventory_DiscoverExpectedMachineInventory(t *test
 			name: "test collecting and publishing expected machine inventory, empty inventory",
 			fields: fields{
 				siteID:               uuid.New(),
-				nicoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 				temporalPublishQueue: "test-queue",
 				sitePageSize:         100,
 				cloudPageSize:        25,
@@ -75,7 +75,7 @@ func TestManageExpectedMachineInventory_DiscoverExpectedMachineInventory(t *test
 			name: "test collecting and publishing expected machine inventory, normal inventory",
 			fields: fields{
 				siteID:               uuid.New(),
-				nicoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 				temporalPublishQueue: "test-queue",
 				sitePageSize:         100,
 				cloudPageSize:        25,
@@ -88,7 +88,7 @@ func TestManageExpectedMachineInventory_DiscoverExpectedMachineInventory(t *test
 			name: "test collecting and publishing expected machine inventory fallback, empty inventory",
 			fields: fields{
 				siteID:               uuid.New(),
-				nicoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 				temporalPublishQueue: "test-queue",
 				sitePageSize:         100,
 				cloudPageSize:        25,
@@ -102,7 +102,7 @@ func TestManageExpectedMachineInventory_DiscoverExpectedMachineInventory(t *test
 			name: "test collecting and publishing expected machine inventory fallback, normal inventory",
 			fields: fields{
 				siteID:               uuid.New(),
-				nicoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 				temporalPublishQueue: "test-queue",
 				sitePageSize:         100,
 				cloudPageSize:        25,
@@ -123,7 +123,7 @@ func TestManageExpectedMachineInventory_DiscoverExpectedMachineInventory(t *test
 
 			manageInstance := NewManageExpectedMachineInventory(
 				tt.fields.siteID,
-				tt.fields.nicoCoreAtomicClient,
+				tt.fields.coreGrpcAtomicClient,
 				tc,
 				tt.fields.temporalPublishQueue,
 				tt.fields.cloudPageSize,
@@ -169,13 +169,13 @@ func TestManageExpectedMachineInventory_DiscoverExpectedMachineInventory(t *test
 }
 
 func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
-	mockNICo := cClient.NewMockNICoClient()
+	mockCoreGrpcClient := cClient.NewMockCoreGrpcClient()
 
-	nicoCoreAtomicClient := cClient.NewNICoCoreAtomicClient(&cClient.NICoCoreClientConfig{})
-	nicoCoreAtomicClient.SwapClient(mockNICo)
+	coreGrpcAtomicClient := cClient.NewCoreGrpcAtomicClient(&cClient.CoreGrpcClientConfig{})
+	coreGrpcAtomicClient.SwapClient(mockCoreGrpcClient)
 
 	type fields struct {
-		NICoCoreAtomicClient *cClient.NICoCoreAtomicClient
+		coreGrpcAtomicClient *cClient.CoreGrpcAtomicClient
 	}
 	type args struct {
 		ctx     context.Context
@@ -190,7 +190,7 @@ func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test create expected machine success",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -205,7 +205,7 @@ func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test create expected machine fail on missing MAC address",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -220,7 +220,7 @@ func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test create expected machine fail on missing serial number",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -235,7 +235,7 @@ func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test create expected machine fail on missing id",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -250,7 +250,7 @@ func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test create expected machine fail on missing identifying information",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -265,7 +265,7 @@ func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test create expected machine fail on missing request",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx:     context.Background(),
@@ -276,7 +276,7 @@ func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := NewManageExpectedMachine(tt.fields.NICoCoreAtomicClient, nil)
+			mm := NewManageExpectedMachine(tt.fields.coreGrpcAtomicClient, nil)
 			err := mm.CreateExpectedMachineOnSite(tt.args.ctx, tt.args.request)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -288,13 +288,13 @@ func TestManageExpectedMachine_CreateExpectedMachineOnSite(t *testing.T) {
 }
 
 func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
-	mockNICo := cClient.NewMockNICoClient()
+	mockCoreGrpcClient := cClient.NewMockCoreGrpcClient()
 
-	nicoCoreAtomicClient := cClient.NewNICoCoreAtomicClient(&cClient.NICoCoreClientConfig{})
-	nicoCoreAtomicClient.SwapClient(mockNICo)
+	coreGrpcAtomicClient := cClient.NewCoreGrpcAtomicClient(&cClient.CoreGrpcClientConfig{})
+	coreGrpcAtomicClient.SwapClient(mockCoreGrpcClient)
 
 	type fields struct {
-		NICoCoreAtomicClient *cClient.NICoCoreAtomicClient
+		coreGrpcAtomicClient *cClient.CoreGrpcAtomicClient
 	}
 	type args struct {
 		ctx     context.Context
@@ -309,7 +309,7 @@ func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test update expected machine success",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -324,7 +324,7 @@ func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test update expected machine fail on missing id",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -339,7 +339,7 @@ func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test update expected machine fail on missing MAC address",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -354,7 +354,7 @@ func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test update expected machine fail on missing serial number",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -369,7 +369,7 @@ func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test update expected machine fail on missing both MAC and serial",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -384,7 +384,7 @@ func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test update expected machine fail on missing request",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx:     context.Background(),
@@ -395,7 +395,7 @@ func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := NewManageExpectedMachine(tt.fields.NICoCoreAtomicClient, nil)
+			mm := NewManageExpectedMachine(tt.fields.coreGrpcAtomicClient, nil)
 			err := mm.UpdateExpectedMachineOnSite(tt.args.ctx, tt.args.request)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -407,13 +407,13 @@ func TestManageExpectedMachine_UpdateExpectedMachineOnSite(t *testing.T) {
 }
 
 func TestManageExpectedMachine_DeleteExpectedMachineOnSite(t *testing.T) {
-	mockNICo := cClient.NewMockNICoClient()
+	mockCoreGrpcClient := cClient.NewMockCoreGrpcClient()
 
-	nicoCoreAtomicClient := cClient.NewNICoCoreAtomicClient(&cClient.NICoCoreClientConfig{})
-	nicoCoreAtomicClient.SwapClient(mockNICo)
+	coreGrpcAtomicClient := cClient.NewCoreGrpcAtomicClient(&cClient.CoreGrpcClientConfig{})
+	coreGrpcAtomicClient.SwapClient(mockCoreGrpcClient)
 
 	type fields struct {
-		NICoCoreAtomicClient *cClient.NICoCoreAtomicClient
+		coreGrpcAtomicClient *cClient.CoreGrpcAtomicClient
 	}
 	type args struct {
 		ctx     context.Context
@@ -428,7 +428,7 @@ func TestManageExpectedMachine_DeleteExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test delete expected machine success",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -442,7 +442,7 @@ func TestManageExpectedMachine_DeleteExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test delete expected machine fail on missing id",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -456,7 +456,7 @@ func TestManageExpectedMachine_DeleteExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test delete expected machine success with missing BMC MAC address",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -470,7 +470,7 @@ func TestManageExpectedMachine_DeleteExpectedMachineOnSite(t *testing.T) {
 		{
 			name: "test delete expected machine fail on missing request",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx:     context.Background(),
@@ -481,7 +481,7 @@ func TestManageExpectedMachine_DeleteExpectedMachineOnSite(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := NewManageExpectedMachine(tt.fields.NICoCoreAtomicClient, nil)
+			mm := NewManageExpectedMachine(tt.fields.coreGrpcAtomicClient, nil)
 			err := mm.DeleteExpectedMachineOnSite(tt.args.ctx, tt.args.request)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -493,13 +493,13 @@ func TestManageExpectedMachine_DeleteExpectedMachineOnSite(t *testing.T) {
 }
 
 func TestManageExpectedMachine_CreateExpectedMachinesOnSite(t *testing.T) {
-	mockNICo := cClient.NewMockNICoClient()
+	mockCoreGrpcClient := cClient.NewMockCoreGrpcClient()
 
-	nicoCoreAtomicClient := cClient.NewNICoCoreAtomicClient(&cClient.NICoCoreClientConfig{})
-	nicoCoreAtomicClient.SwapClient(mockNICo)
+	coreGrpcAtomicClient := cClient.NewCoreGrpcAtomicClient(&cClient.CoreGrpcClientConfig{})
+	coreGrpcAtomicClient.SwapClient(mockCoreGrpcClient)
 
 	type fields struct {
-		NICoCoreAtomicClient *cClient.NICoCoreAtomicClient
+		coreGrpcAtomicClient *cClient.CoreGrpcAtomicClient
 	}
 	type args struct {
 		ctx     context.Context
@@ -514,7 +514,7 @@ func TestManageExpectedMachine_CreateExpectedMachinesOnSite(t *testing.T) {
 		{
 			name: "test create expected machines success",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -541,7 +541,7 @@ func TestManageExpectedMachine_CreateExpectedMachinesOnSite(t *testing.T) {
 		{
 			name: "test create expected machines fail on empty list",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -556,7 +556,7 @@ func TestManageExpectedMachine_CreateExpectedMachinesOnSite(t *testing.T) {
 		{
 			name: "test create expected machines fail on nil request",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx:     context.Background(),
@@ -567,7 +567,7 @@ func TestManageExpectedMachine_CreateExpectedMachinesOnSite(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := NewManageExpectedMachine(tt.fields.NICoCoreAtomicClient, nil)
+			mm := NewManageExpectedMachine(tt.fields.coreGrpcAtomicClient, nil)
 			response, err := mm.CreateExpectedMachinesOnSite(tt.args.ctx, tt.args.request)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -590,13 +590,13 @@ func TestManageExpectedMachine_CreateExpectedMachinesOnSite(t *testing.T) {
 }
 
 func TestManageExpectedMachine_UpdateExpectedMachinesOnSite(t *testing.T) {
-	mockNICo := cClient.NewMockNICoClient()
+	mockCoreGrpcClient := cClient.NewMockCoreGrpcClient()
 
-	nicoCoreAtomicClient := cClient.NewNICoCoreAtomicClient(&cClient.NICoCoreClientConfig{})
-	nicoCoreAtomicClient.SwapClient(mockNICo)
+	coreGrpcAtomicClient := cClient.NewCoreGrpcAtomicClient(&cClient.CoreGrpcClientConfig{})
+	coreGrpcAtomicClient.SwapClient(mockCoreGrpcClient)
 
 	type fields struct {
-		NICoCoreAtomicClient *cClient.NICoCoreAtomicClient
+		coreGrpcAtomicClient *cClient.CoreGrpcAtomicClient
 	}
 	type args struct {
 		ctx     context.Context
@@ -611,7 +611,7 @@ func TestManageExpectedMachine_UpdateExpectedMachinesOnSite(t *testing.T) {
 		{
 			name: "test update expected machines success",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -638,7 +638,7 @@ func TestManageExpectedMachine_UpdateExpectedMachinesOnSite(t *testing.T) {
 		{
 			name: "test update expected machines fail on empty list",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx: context.Background(),
@@ -653,7 +653,7 @@ func TestManageExpectedMachine_UpdateExpectedMachinesOnSite(t *testing.T) {
 		{
 			name: "test update expected machines fail on nil request",
 			fields: fields{
-				NICoCoreAtomicClient: nicoCoreAtomicClient,
+				coreGrpcAtomicClient: coreGrpcAtomicClient,
 			},
 			args: args{
 				ctx:     context.Background(),
@@ -664,7 +664,7 @@ func TestManageExpectedMachine_UpdateExpectedMachinesOnSite(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mm := NewManageExpectedMachine(tt.fields.NICoCoreAtomicClient, nil)
+			mm := NewManageExpectedMachine(tt.fields.coreGrpcAtomicClient, nil)
 			response, err := mm.UpdateExpectedMachinesOnSite(tt.args.ctx, tt.args.request)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -686,28 +686,28 @@ func TestManageExpectedMachine_UpdateExpectedMachinesOnSite(t *testing.T) {
 	}
 }
 
-func TestManageExpectedMachine_CreateExpectedMachineOnRLA(t *testing.T) {
-	t.Run("nil RLA client skips gracefully", func(t *testing.T) {
-		mm := ManageExpectedMachine{RlaAtomicClient: nil}
-		err := mm.CreateExpectedMachineOnRLA(context.Background(), &cwssaws.ExpectedMachine{
+func TestManageExpectedMachine_CreateExpectedMachineOnFlow(t *testing.T) {
+	t.Run("nil Flow client skips gracefully", func(t *testing.T) {
+		mm := ManageExpectedMachine{flowGrpcAtomicClient: nil}
+		err := mm.CreateExpectedMachineOnFlow(context.Background(), &cwssaws.ExpectedMachine{
 			Id: &cwssaws.UUID{Value: uuid.NewString()}, BmcMacAddress: "00:11:22:33:44:55", ChassisSerialNumber: "SN001",
 		})
 		assert.NoError(t, err)
 	})
 
-	t.Run("nil RLA client connection skips gracefully", func(t *testing.T) {
-		mm := ManageExpectedMachine{RlaAtomicClient: cClient.NewRlaAtomicClient(&cClient.RlaClientConfig{})}
-		err := mm.CreateExpectedMachineOnRLA(context.Background(), &cwssaws.ExpectedMachine{
+	t.Run("nil Flow client connection skips gracefully", func(t *testing.T) {
+		mm := ManageExpectedMachine{flowGrpcAtomicClient: cClient.NewFlowGrpcAtomicClient(&cClient.FlowGrpcClientConfig{})}
+		err := mm.CreateExpectedMachineOnFlow(context.Background(), &cwssaws.ExpectedMachine{
 			Id: &cwssaws.UUID{Value: uuid.NewString()}, BmcMacAddress: "00:11:22:33:44:55", ChassisSerialNumber: "SN001",
 		})
 		assert.NoError(t, err)
 	})
 }
 
-func TestManageExpectedMachine_CreateExpectedMachinesOnRLA(t *testing.T) {
-	t.Run("nil RLA client skips gracefully", func(t *testing.T) {
-		mm := ManageExpectedMachine{RlaAtomicClient: nil}
-		err := mm.CreateExpectedMachinesOnRLA(context.Background(), &cwssaws.BatchExpectedMachineOperationRequest{
+func TestManageExpectedMachine_CreateExpectedMachinesOnFlow(t *testing.T) {
+	t.Run("nil Flow client skips gracefully", func(t *testing.T) {
+		mm := ManageExpectedMachine{flowGrpcAtomicClient: nil}
+		err := mm.CreateExpectedMachinesOnFlow(context.Background(), &cwssaws.BatchExpectedMachineOperationRequest{
 			ExpectedMachines: &cwssaws.ExpectedMachineList{
 				ExpectedMachines: []*cwssaws.ExpectedMachine{
 					{Id: &cwssaws.UUID{Value: uuid.NewString()}, BmcMacAddress: "00:11:22:33:44:55", ChassisSerialNumber: "SN001"},
@@ -717,9 +717,9 @@ func TestManageExpectedMachine_CreateExpectedMachinesOnRLA(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	t.Run("nil RLA client connection skips gracefully", func(t *testing.T) {
-		mm := ManageExpectedMachine{RlaAtomicClient: cClient.NewRlaAtomicClient(&cClient.RlaClientConfig{})}
-		err := mm.CreateExpectedMachinesOnRLA(context.Background(), &cwssaws.BatchExpectedMachineOperationRequest{
+	t.Run("nil Flow client connection skips gracefully", func(t *testing.T) {
+		mm := ManageExpectedMachine{flowGrpcAtomicClient: cClient.NewFlowGrpcAtomicClient(&cClient.FlowGrpcClientConfig{})}
+		err := mm.CreateExpectedMachinesOnFlow(context.Background(), &cwssaws.BatchExpectedMachineOperationRequest{
 			ExpectedMachines: &cwssaws.ExpectedMachineList{
 				ExpectedMachines: []*cwssaws.ExpectedMachine{
 					{Id: &cwssaws.UUID{Value: uuid.NewString()}, BmcMacAddress: "00:11:22:33:44:55", ChassisSerialNumber: "SN001"},
@@ -730,7 +730,7 @@ func TestManageExpectedMachine_CreateExpectedMachinesOnRLA(t *testing.T) {
 	})
 }
 
-func Test_expectedMachineToRLAComponent(t *testing.T) {
+func Test_expectedMachineToFlowComponent(t *testing.T) {
 	strPtr := func(s string) *string { return &s }
 	int32Ptr := func(i int32) *int32 { return &i }
 
@@ -749,8 +749,8 @@ func Test_expectedMachineToRLAComponent(t *testing.T) {
 			TrayIdx:             int32Ptr(2),
 			HostId:              int32Ptr(3),
 		}
-		component := expectedMachineToRLAComponent(em)
-		assert.Equal(t, rlav1.ComponentType_COMPONENT_TYPE_COMPUTE, component.Type)
+		component := expectedMachineToFlowComponent(em)
+		assert.Equal(t, flowv1.ComponentType_COMPONENT_TYPE_COMPUTE, component.Type)
 		assert.Equal(t, "em-001", component.Info.Id.Id)
 		assert.Equal(t, "CHASSIS-001", component.Info.SerialNumber)
 		assert.Equal(t, "compute-node-1", component.Info.Name)
@@ -764,7 +764,7 @@ func Test_expectedMachineToRLAComponent(t *testing.T) {
 		assert.Equal(t, int32(2), component.Position.TrayIdx)
 		assert.Equal(t, int32(3), component.Position.HostId)
 		if assert.Len(t, component.Bmcs, 1) {
-			assert.Equal(t, rlav1.BMCType_BMC_TYPE_HOST, component.Bmcs[0].Type)
+			assert.Equal(t, flowv1.BMCType_BMC_TYPE_HOST, component.Bmcs[0].Type)
 			assert.Equal(t, "AA:BB:CC:DD:EE:FF", component.Bmcs[0].MacAddress)
 		}
 		assert.NotNil(t, component.RackId)
@@ -775,8 +775,8 @@ func Test_expectedMachineToRLAComponent(t *testing.T) {
 		em := &cwssaws.ExpectedMachine{
 			Id: &cwssaws.UUID{Value: "em-002"}, BmcMacAddress: "11:22:33:44:55:66", ChassisSerialNumber: "CHASSIS-002",
 		}
-		component := expectedMachineToRLAComponent(em)
-		assert.Equal(t, rlav1.ComponentType_COMPONENT_TYPE_COMPUTE, component.Type)
+		component := expectedMachineToFlowComponent(em)
+		assert.Equal(t, flowv1.ComponentType_COMPONENT_TYPE_COMPUTE, component.Type)
 		assert.Equal(t, "em-002", component.ComponentId)
 		assert.Empty(t, component.Info.Name)
 		assert.Empty(t, component.Info.Manufacturer)
@@ -792,7 +792,7 @@ func Test_expectedMachineToRLAComponent(t *testing.T) {
 			Id: &cwssaws.UUID{Value: "em-003"}, BmcMacAddress: "22:33:44:55:66:77",
 			ChassisSerialNumber: "CHASSIS-003", RackId: &cwssaws.RackId{Id: ""},
 		}
-		component := expectedMachineToRLAComponent(em)
+		component := expectedMachineToFlowComponent(em)
 		assert.Nil(t, component.RackId)
 	})
 
@@ -801,7 +801,7 @@ func Test_expectedMachineToRLAComponent(t *testing.T) {
 			Id: &cwssaws.UUID{Value: "em-004"}, BmcMacAddress: "33:44:55:66:77:88",
 			ChassisSerialNumber: "CHASSIS-004", SlotId: int32Ptr(5),
 		}
-		component := expectedMachineToRLAComponent(em)
+		component := expectedMachineToFlowComponent(em)
 		assert.NotNil(t, component.Position)
 		assert.Equal(t, int32(5), component.Position.SlotId)
 		assert.Equal(t, int32(0), component.Position.TrayIdx)

@@ -36,7 +36,7 @@ import (
 	cdb "github.com/NVIDIA/infra-controller-rest/db/pkg/db"
 	cdbm "github.com/NVIDIA/infra-controller-rest/db/pkg/db/model"
 	cdbu "github.com/NVIDIA/infra-controller-rest/db/pkg/util"
-	rlav1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/rla/protobuf/v1"
+	flowv1 "github.com/NVIDIA/infra-controller-rest/workflow-schema/flow/protobuf/v1"
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
@@ -85,14 +85,14 @@ func testRackSetupTestData(t *testing.T, dbSession *cdb.Session, org string) (*c
 	_, err := dbSession.DB.NewInsert().Model(ip).Exec(ctx)
 	assert.Nil(t, err)
 
-	// Create site with RLA enabled
+	// Create site with Flow enabled
 	site := &cdbm.Site{
 		ID:                       uuid.New(),
 		Name:                     "test-site",
 		Org:                      org,
 		InfrastructureProviderID: ip.ID,
 		Status:                   cdbm.SiteStatusRegistered,
-		Config:                   &cdbm.SiteConfig{RackLevelAdministration: true},
+		Config:                   &cdbm.SiteConfig{Flow: true},
 	}
 	_, err = dbSession.DB.NewInsert().Model(site).Exec(ctx)
 	assert.Nil(t, err)
@@ -162,16 +162,16 @@ func TestGetRackHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
-	// Create a site without RLA enabled
-	siteNoRLA := &cdbm.Site{
+	// Create a site without Flow enabled
+	siteNoFlow := &cdbm.Site{
 		ID:                       uuid.New(),
-		Name:                     "test-site-no-rla",
+		Name:                     "test-site-no-flow",
 		Org:                      org,
 		InfrastructureProviderID: site.InfrastructureProviderID,
 		Status:                   cdbm.SiteStatusRegistered,
 		Config:                   &cdbm.SiteConfig{},
 	}
-	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	_, err := dbSession.DB.NewInsert().Model(siteNoFlow).Exec(context.Background())
 	assert.Nil(t, err)
 
 	// Create provider user
@@ -184,9 +184,9 @@ func TestGetRackHandler_Handle(t *testing.T) {
 
 	rackID := uuid.New().String()
 
-	mockRack := &rlav1.Rack{
-		Info: &rlav1.DeviceInfo{
-			Id:           &rlav1.UUID{Id: rackID},
+	mockRack := &flowv1.Rack{
+		Info: &flowv1.DeviceInfo{
+			Id:           &flowv1.UUID{Id: rackID},
 			Name:         "Rack-001",
 			Manufacturer: "NVIDIA",
 		},
@@ -201,7 +201,7 @@ func TestGetRackHandler_Handle(t *testing.T) {
 		user           *cdbm.User
 		rackID         string
 		queryParams    map[string]string
-		mockRack       *rlav1.Rack
+		mockRack       *flowv1.Rack
 		expectedStatus int
 		wantErr        bool
 	}{
@@ -218,12 +218,12 @@ func TestGetRackHandler_Handle(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:   "failure - RLA not enabled on site",
+			name:   "failure - Flow not enabled on site",
 			reqOrg: org,
 			user:   providerUser,
 			rackID: rackID,
 			queryParams: map[string]string{
-				"siteId": siteNoRLA.ID.String(),
+				"siteId": siteNoFlow.ID.String(),
 			},
 			expectedStatus: http.StatusPreconditionFailed,
 			wantErr:        true,
@@ -282,12 +282,12 @@ func TestGetRackHandler_Handle(t *testing.T) {
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			if tt.mockRack != nil {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.GetRackInfoResponse)
+					resp := args.Get(1).(*flowv1.GetRackInfoResponse)
 					resp.Rack = tt.mockRack
 				}).Return(nil)
 			} else {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.GetRackInfoResponse)
+					resp := args.Get(1).(*flowv1.GetRackInfoResponse)
 					resp.Rack = nil
 				}).Return(nil)
 			}
@@ -344,16 +344,16 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
-	// Create a site without RLA enabled
-	siteNoRLA := &cdbm.Site{
+	// Create a site without Flow enabled
+	siteNoFlow := &cdbm.Site{
 		ID:                       uuid.New(),
-		Name:                     "test-site-no-rla",
+		Name:                     "test-site-no-flow",
 		Org:                      org,
 		InfrastructureProviderID: site.InfrastructureProviderID,
 		Status:                   cdbm.SiteStatusRegistered,
 		Config:                   &cdbm.SiteConfig{},
 	}
-	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	_, err := dbSession.DB.NewInsert().Model(siteNoFlow).Exec(context.Background())
 	assert.Nil(t, err)
 
 	// Create provider user
@@ -364,20 +364,20 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 
 	handler := NewGetAllRackHandler(dbSession, nil, scp, cfg)
 
-	// Helper to create mock RLA response
-	createMockRLAResponse := func(racks []*rlav1.Rack, total int32) *rlav1.GetListOfRacksResponse {
-		return &rlav1.GetListOfRacksResponse{
+	// Helper to create mock Flow response
+	createMockRLAResponse := func(racks []*flowv1.Rack, total int32) *flowv1.GetListOfRacksResponse {
+		return &flowv1.GetListOfRacksResponse{
 			Racks: racks,
 			Total: total,
 		}
 	}
 
 	// Helper to create mock rack
-	createMockRack := func(id, name, manufacturer, model string) *rlav1.Rack {
-		rackID := &rlav1.UUID{Id: id}
+	createMockRack := func(id, name, manufacturer, model string) *flowv1.Rack {
+		rackID := &flowv1.UUID{Id: id}
 		modelPtr := model
-		return &rlav1.Rack{
-			Info: &rlav1.DeviceInfo{
+		return &flowv1.Rack{
+			Info: &flowv1.DeviceInfo{
 				Id:           rackID,
 				Name:         name,
 				Manufacturer: manufacturer,
@@ -387,7 +387,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 	}
 
 	// Create test racks
-	testRacks := []*rlav1.Rack{
+	testRacks := []*flowv1.Rack{
 		createMockRack("rack-1", "Rack-001", "NVIDIA", "NVL72"),
 		createMockRack("rack-2", "Rack-002", "NVIDIA", "NVL72"),
 		createMockRack("rack-3", "Rack-003", "Dell", "PowerEdge"),
@@ -403,7 +403,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		queryParams    map[string]string
-		mockResponse   *rlav1.GetListOfRacksResponse
+		mockResponse   *flowv1.GetListOfRacksResponse
 		expectedStatus int
 		expectedCount  int
 		expectedTotal  *int
@@ -430,7 +430,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 				"siteId": site.ID.String(),
 				"name":   "Rack-001",
 			},
-			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[0]}, 1),
+			mockResponse:   createMockRLAResponse([]*flowv1.Rack{testRacks[0]}, 1),
 			expectedStatus: http.StatusOK,
 			expectedCount:  1,
 			expectedTotal:  cdb.GetIntPtr(1),
@@ -444,7 +444,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 				"siteId":       site.ID.String(),
 				"manufacturer": "Dell",
 			},
-			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[2], testRacks[4]}, 2),
+			mockResponse:   createMockRLAResponse([]*flowv1.Rack{testRacks[2], testRacks[4]}, 2),
 			expectedStatus: http.StatusOK,
 			expectedCount:  2,
 			expectedTotal:  cdb.GetIntPtr(2),
@@ -458,7 +458,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 				"siteId": site.ID.String(),
 				"name":   "Rack-001",
 			},
-			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[0], testRacks[1]}, 2),
+			mockResponse:   createMockRLAResponse([]*flowv1.Rack{testRacks[0], testRacks[1]}, 2),
 			expectedStatus: http.StatusOK,
 			expectedCount:  2,
 			expectedTotal:  cdb.GetIntPtr(2),
@@ -473,7 +473,7 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 				"pageNumber": "1",
 				"pageSize":   "2",
 			},
-			mockResponse:   createMockRLAResponse([]*rlav1.Rack{testRacks[0], testRacks[1]}, int32(len(testRacks))),
+			mockResponse:   createMockRLAResponse([]*flowv1.Rack{testRacks[0], testRacks[1]}, int32(len(testRacks))),
 			expectedStatus: http.StatusOK,
 			expectedCount:  2,
 			expectedTotal:  cdb.GetIntPtr(len(testRacks)),
@@ -508,11 +508,11 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 			wantErr:        false,
 		},
 		{
-			name:   "failure - RLA not enabled on site",
+			name:   "failure - Flow not enabled on site",
 			reqOrg: org,
 			user:   providerUser,
 			queryParams: map[string]string{
-				"siteId": siteNoRLA.ID.String(),
+				"siteId": siteNoFlow.ID.String(),
 			},
 			mockResponse:   nil,
 			expectedStatus: http.StatusPreconditionFailed,
@@ -563,15 +563,15 @@ func TestGetAllRackHandler_Handle(t *testing.T) {
 			// Always set up Get mock, even for error cases, as handler may still call it
 			if tt.mockResponse != nil {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.GetListOfRacksResponse)
+					resp := args.Get(1).(*flowv1.GetListOfRacksResponse)
 					resp.Racks = tt.mockResponse.Racks
 					resp.Total = tt.mockResponse.Total
 				}).Return(nil)
 			} else {
 				// For error cases, set up a mock that returns empty response
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.GetListOfRacksResponse)
-					resp.Racks = []*rlav1.Rack{}
+					resp := args.Get(1).(*flowv1.GetListOfRacksResponse)
+					resp.Racks = []*flowv1.Rack{}
 					resp.Total = 0
 				}).Return(nil)
 			}
@@ -643,16 +643,16 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
-	// Create a site without RLA enabled
-	siteNoRLA := &cdbm.Site{
+	// Create a site without Flow enabled
+	siteNoFlow := &cdbm.Site{
 		ID:                       uuid.New(),
-		Name:                     "test-site-no-rla",
+		Name:                     "test-site-no-flow",
 		Org:                      org,
 		InfrastructureProviderID: site.InfrastructureProviderID,
 		Status:                   cdbm.SiteStatusRegistered,
 		Config:                   &cdbm.SiteConfig{},
 	}
-	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	_, err := dbSession.DB.NewInsert().Model(siteNoFlow).Exec(context.Background())
 	assert.Nil(t, err)
 
 	// Create provider user
@@ -674,7 +674,7 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 		user           *cdbm.User
 		rackID         string
 		queryParams    map[string]string
-		mockResponse   *rlav1.ValidateComponentsResponse
+		mockResponse   *flowv1.ValidateComponentsResponse
 		expectedStatus int
 		wantErr        bool
 	}{
@@ -686,12 +686,12 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 			queryParams: map[string]string{
 				"siteId": site.ID.String(),
 			},
-			mockResponse: &rlav1.ValidateComponentsResponse{
-				Diffs:           []*rlav1.ComponentDiff{},
+			mockResponse: &flowv1.ValidateComponentsResponse{
+				Diffs:           []*flowv1.ComponentDiff{},
 				TotalDiffs:      0,
 				MissingCount:    0,
 				UnexpectedCount: 0,
-				DriftCount:      0,
+				MismatchCount:   0,
 				MatchCount:      5,
 			},
 			expectedStatus: http.StatusOK,
@@ -705,29 +705,29 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 			queryParams: map[string]string{
 				"siteId": site.ID.String(),
 			},
-			mockResponse: &rlav1.ValidateComponentsResponse{
-				Diffs: []*rlav1.ComponentDiff{
+			mockResponse: &flowv1.ValidateComponentsResponse{
+				Diffs: []*flowv1.ComponentDiff{
 					{
-						Type:        rlav1.DiffType_DIFF_TYPE_MISSING,
+						Type:        flowv1.DiffType_DIFF_TYPE_MISSING,
 						ComponentId: "comp-1",
 					},
 				},
 				TotalDiffs:      1,
 				MissingCount:    1,
 				UnexpectedCount: 0,
-				DriftCount:      0,
+				MismatchCount:   0,
 				MatchCount:      4,
 			},
 			expectedStatus: http.StatusOK,
 			wantErr:        false,
 		},
 		{
-			name:   "failure - RLA not enabled on site",
+			name:   "failure - Flow not enabled on site",
 			reqOrg: org,
 			user:   providerUser,
 			rackID: rackID,
 			queryParams: map[string]string{
-				"siteId": siteNoRLA.ID.String(),
+				"siteId": siteNoFlow.ID.String(),
 			},
 			mockResponse:   nil,
 			expectedStatus: http.StatusPreconditionFailed,
@@ -777,18 +777,18 @@ func TestValidateRackHandler_Handle(t *testing.T) {
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			if tt.mockResponse != nil {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.ValidateComponentsResponse)
+					resp := args.Get(1).(*flowv1.ValidateComponentsResponse)
 					resp.Diffs = tt.mockResponse.Diffs
 					resp.TotalDiffs = tt.mockResponse.TotalDiffs
 					resp.MissingCount = tt.mockResponse.MissingCount
 					resp.UnexpectedCount = tt.mockResponse.UnexpectedCount
-					resp.DriftCount = tt.mockResponse.DriftCount
+					resp.MismatchCount = tt.mockResponse.MismatchCount
 					resp.MatchCount = tt.mockResponse.MatchCount
 				}).Return(nil)
 			} else {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.ValidateComponentsResponse)
-					resp.Diffs = []*rlav1.ComponentDiff{}
+					resp := args.Get(1).(*flowv1.ValidateComponentsResponse)
+					resp.Diffs = []*flowv1.ComponentDiff{}
 					resp.TotalDiffs = 0
 				}).Return(nil)
 			}
@@ -848,16 +848,16 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 	org := "test-org"
 	_, site, _ := testRackSetupTestData(t, dbSession, org)
 
-	// Create a site without RLA enabled
-	siteNoRLA := &cdbm.Site{
+	// Create a site without Flow enabled
+	siteNoFlow := &cdbm.Site{
 		ID:                       uuid.New(),
-		Name:                     "test-site-no-rla",
+		Name:                     "test-site-no-flow",
 		Org:                      org,
 		InfrastructureProviderID: site.InfrastructureProviderID,
 		Status:                   cdbm.SiteStatusRegistered,
 		Config:                   &cdbm.SiteConfig{},
 	}
-	_, err := dbSession.DB.NewInsert().Model(siteNoRLA).Exec(context.Background())
+	_, err := dbSession.DB.NewInsert().Model(siteNoFlow).Exec(context.Background())
 	assert.Nil(t, err)
 
 	providerUser := testRackBuildUser(t, dbSession, "provider-user-validate-racks", org, []string{authz.ProviderAdminRole})
@@ -873,7 +873,7 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		queryParams    map[string]string
-		mockResponse   *rlav1.ValidateComponentsResponse
+		mockResponse   *flowv1.ValidateComponentsResponse
 		expectedStatus int
 	}{
 		{
@@ -883,12 +883,12 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 			queryParams: map[string]string{
 				"siteId": site.ID.String(),
 			},
-			mockResponse: &rlav1.ValidateComponentsResponse{
-				Diffs:           []*rlav1.ComponentDiff{},
+			mockResponse: &flowv1.ValidateComponentsResponse{
+				Diffs:           []*flowv1.ComponentDiff{},
 				TotalDiffs:      0,
 				MissingCount:    0,
 				UnexpectedCount: 0,
-				DriftCount:      0,
+				MismatchCount:   0,
 				MatchCount:      10,
 			},
 			expectedStatus: http.StatusOK,
@@ -901,12 +901,12 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 				"siteId": site.ID.String(),
 				"name":   "Rack-001",
 			},
-			mockResponse: &rlav1.ValidateComponentsResponse{
-				Diffs:           []*rlav1.ComponentDiff{},
+			mockResponse: &flowv1.ValidateComponentsResponse{
+				Diffs:           []*flowv1.ComponentDiff{},
 				TotalDiffs:      0,
 				MissingCount:    0,
 				UnexpectedCount: 0,
-				DriftCount:      0,
+				MismatchCount:   0,
 				MatchCount:      5,
 			},
 			expectedStatus: http.StatusOK,
@@ -919,12 +919,12 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 				"siteId":       site.ID.String(),
 				"manufacturer": "NVIDIA",
 			},
-			mockResponse: &rlav1.ValidateComponentsResponse{
-				Diffs: []*rlav1.ComponentDiff{
+			mockResponse: &flowv1.ValidateComponentsResponse{
+				Diffs: []*flowv1.ComponentDiff{
 					{
-						Type:        rlav1.DiffType_DIFF_TYPE_DRIFT,
+						Type:        flowv1.DiffType_DIFF_TYPE_MISMATCH,
 						ComponentId: "comp-1",
-						FieldDiffs: []*rlav1.FieldDiff{
+						FieldDiffs: []*flowv1.FieldDiff{
 							{
 								FieldName:     "firmware_version",
 								ExpectedValue: "1.0.0",
@@ -936,7 +936,7 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 				TotalDiffs:      1,
 				MissingCount:    0,
 				UnexpectedCount: 0,
-				DriftCount:      1,
+				MismatchCount:   1,
 				MatchCount:      7,
 			},
 			expectedStatus: http.StatusOK,
@@ -950,19 +950,19 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 				"name":         "Rack-001",
 				"manufacturer": "NVIDIA",
 			},
-			mockResponse: &rlav1.ValidateComponentsResponse{
-				Diffs:      []*rlav1.ComponentDiff{},
+			mockResponse: &flowv1.ValidateComponentsResponse{
+				Diffs:      []*flowv1.ComponentDiff{},
 				TotalDiffs: 0,
 				MatchCount: 3,
 			},
 			expectedStatus: http.StatusOK,
 		},
 		{
-			name:   "failure - RLA not enabled on site",
+			name:   "failure - Flow not enabled on site",
 			reqOrg: org,
 			user:   providerUser,
 			queryParams: map[string]string{
-				"siteId": siteNoRLA.ID.String(),
+				"siteId": siteNoFlow.ID.String(),
 			},
 			expectedStatus: http.StatusPreconditionFailed,
 		},
@@ -1000,18 +1000,18 @@ func TestValidateRacksHandler_Handle(t *testing.T) {
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			if tt.mockResponse != nil {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.ValidateComponentsResponse)
+					resp := args.Get(1).(*flowv1.ValidateComponentsResponse)
 					resp.Diffs = tt.mockResponse.Diffs
 					resp.TotalDiffs = tt.mockResponse.TotalDiffs
 					resp.MissingCount = tt.mockResponse.MissingCount
 					resp.UnexpectedCount = tt.mockResponse.UnexpectedCount
-					resp.DriftCount = tt.mockResponse.DriftCount
+					resp.MismatchCount = tt.mockResponse.MismatchCount
 					resp.MatchCount = tt.mockResponse.MatchCount
 				}).Return(nil)
 			} else {
 				mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-					resp := args.Get(1).(*rlav1.ValidateComponentsResponse)
-					resp.Diffs = []*rlav1.ComponentDiff{}
+					resp := args.Get(1).(*flowv1.ValidateComponentsResponse)
+					resp.Diffs = []*flowv1.ComponentDiff{}
 					resp.TotalDiffs = 0
 				}).Return(nil)
 			}
@@ -1084,7 +1084,7 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 		user           *cdbm.User
 		rackID         string
 		body           string
-		mockTaskIDs    []*rlav1.UUID
+		mockTaskIDs    []*flowv1.UUID
 		expectedStatus int
 	}{
 		{
@@ -1093,7 +1093,7 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1102,7 +1102,7 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s","state":"off"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1111,7 +1111,7 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s","state":"cycle"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1120,7 +1120,7 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s","state":"forceoff"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1129,7 +1129,7 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s","state":"forcecycle"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1180,7 +1180,7 @@ func TestUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			mockWorkflowRun := &tmocks.WorkflowRun{}
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-				resp := args.Get(1).(*rlav1.SubmitTaskResponse)
+				resp := args.Get(1).(*flowv1.SubmitTaskResponse)
 				if tt.mockTaskIDs != nil {
 					resp.TaskIds = tt.mockTaskIDs
 				}
@@ -1246,7 +1246,7 @@ func TestBatchUpdateRackPowerStateHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		body           string
-		mockTaskIDs    []*rlav1.UUID
+		mockTaskIDs    []*flowv1.UUID
 		expectedStatus int
 	}{
 		{
@@ -1254,7 +1254,7 @@ func TestBatchUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s","state":"on"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}, {Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}, {Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1262,7 +1262,7 @@ func TestBatchUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s","filter":{"names":["Rack-001"]},"state":"off"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1301,7 +1301,7 @@ func TestBatchUpdateRackPowerStateHandler_Handle(t *testing.T) {
 			mockWorkflowRun := &tmocks.WorkflowRun{}
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-				resp := args.Get(1).(*rlav1.SubmitTaskResponse)
+				resp := args.Get(1).(*flowv1.SubmitTaskResponse)
 				if tt.mockTaskIDs != nil {
 					resp.TaskIds = tt.mockTaskIDs
 				}
@@ -1370,7 +1370,7 @@ func TestUpdateRackFirmwareHandler_Handle(t *testing.T) {
 		user           *cdbm.User
 		rackID         string
 		body           string
-		mockTaskIDs    []*rlav1.UUID
+		mockTaskIDs    []*flowv1.UUID
 		expectedStatus int
 	}{
 		{
@@ -1379,7 +1379,7 @@ func TestUpdateRackFirmwareHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s","version":"24.11.0"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1388,7 +1388,7 @@ func TestUpdateRackFirmwareHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1423,7 +1423,7 @@ func TestUpdateRackFirmwareHandler_Handle(t *testing.T) {
 			mockWorkflowRun := &tmocks.WorkflowRun{}
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-				resp := args.Get(1).(*rlav1.SubmitTaskResponse)
+				resp := args.Get(1).(*flowv1.SubmitTaskResponse)
 				if tt.mockTaskIDs != nil {
 					resp.TaskIds = tt.mockTaskIDs
 				}
@@ -1492,7 +1492,7 @@ func TestBringUpRackHandler_Handle(t *testing.T) {
 		user           *cdbm.User
 		rackID         string
 		body           string
-		mockTaskIDs    []*rlav1.UUID
+		mockTaskIDs    []*flowv1.UUID
 		expectedStatus int
 	}{
 		{
@@ -1501,7 +1501,7 @@ func TestBringUpRackHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1510,7 +1510,7 @@ func TestBringUpRackHandler_Handle(t *testing.T) {
 			user:           providerUser,
 			rackID:         rackID,
 			body:           fmt.Sprintf(`{"siteId":"%s","description":"test bring up"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1545,7 +1545,7 @@ func TestBringUpRackHandler_Handle(t *testing.T) {
 			mockWorkflowRun := &tmocks.WorkflowRun{}
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-				resp := args.Get(1).(*rlav1.SubmitTaskResponse)
+				resp := args.Get(1).(*flowv1.SubmitTaskResponse)
 				if tt.mockTaskIDs != nil {
 					resp.TaskIds = tt.mockTaskIDs
 				}
@@ -1611,7 +1611,7 @@ func TestBatchBringUpRackHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		body           string
-		mockTaskIDs    []*rlav1.UUID
+		mockTaskIDs    []*flowv1.UUID
 		expectedStatus int
 	}{
 		{
@@ -1619,7 +1619,7 @@ func TestBatchBringUpRackHandler_Handle(t *testing.T) {
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}, {Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}, {Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1627,7 +1627,7 @@ func TestBatchBringUpRackHandler_Handle(t *testing.T) {
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s","filter":{"names":["Rack-001"]}}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1635,7 +1635,7 @@ func TestBatchBringUpRackHandler_Handle(t *testing.T) {
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s","description":"batch bring up test"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1667,7 +1667,7 @@ func TestBatchBringUpRackHandler_Handle(t *testing.T) {
 			mockWorkflowRun := &tmocks.WorkflowRun{}
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-				resp := args.Get(1).(*rlav1.SubmitTaskResponse)
+				resp := args.Get(1).(*flowv1.SubmitTaskResponse)
 				if tt.mockTaskIDs != nil {
 					resp.TaskIds = tt.mockTaskIDs
 				}
@@ -1733,7 +1733,7 @@ func TestBatchUpdateRackFirmwareHandler_Handle(t *testing.T) {
 		reqOrg         string
 		user           *cdbm.User
 		body           string
-		mockTaskIDs    []*rlav1.UUID
+		mockTaskIDs    []*flowv1.UUID
 		expectedStatus int
 	}{
 		{
@@ -1741,7 +1741,7 @@ func TestBatchUpdateRackFirmwareHandler_Handle(t *testing.T) {
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}, {Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}, {Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1749,7 +1749,7 @@ func TestBatchUpdateRackFirmwareHandler_Handle(t *testing.T) {
 			reqOrg:         org,
 			user:           providerUser,
 			body:           fmt.Sprintf(`{"siteId":"%s","filter":{"names":["rack-1"]},"version":"24.11.0"}`, site.ID.String()),
-			mockTaskIDs:    []*rlav1.UUID{{Id: uuid.NewString()}},
+			mockTaskIDs:    []*flowv1.UUID{{Id: uuid.NewString()}},
 			expectedStatus: http.StatusOK,
 		},
 		{
@@ -1774,7 +1774,7 @@ func TestBatchUpdateRackFirmwareHandler_Handle(t *testing.T) {
 			mockWorkflowRun := &tmocks.WorkflowRun{}
 			mockWorkflowRun.On("GetID").Return("test-workflow-id")
 			mockWorkflowRun.Mock.On("Get", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-				resp := args.Get(1).(*rlav1.SubmitTaskResponse)
+				resp := args.Get(1).(*flowv1.SubmitTaskResponse)
 				if tt.mockTaskIDs != nil {
 					resp.TaskIds = tt.mockTaskIDs
 				}
